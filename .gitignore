@@ -1,0 +1,15 @@
+/tags
+/temp
+/build
+/test
+/*.c
+/*.html
+/perf.log
+/perf.data
+/perf.svg
+*.so
+.DS_Store
+*.pyc
+/.idea/
+/dewarp/
+/binarize/

@@ -1,0 +1,6 @@
+Cython
+opencv-python
+scikit-image
+scikit-learn
+ultralytics
+rapidocr-onnxruntime
