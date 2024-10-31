@@ -43,3 +43,7 @@ options:
   -n NOTE_NAME, --note_name NOTE_NAME
                         Model file path for YOLO segment.
 ```
+
+## Credits
+
+- [phulin/rebook](https://github.com/phulin/rebook)
