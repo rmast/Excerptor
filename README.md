@@ -2,6 +2,16 @@
 
 Process: `segment`->`split`->`dewarp`->`ocr`
 
+## Introduction
+
+[简体中文 - 带着数字化“摘录者”重返纸质阅读](https://sspai.com/post/93418)
+
+## Todo
+
+- [ ] Remove ultralytics, RapidOCR, rtmlib dependencies.
+- [ ] Handwritten notes recognition.
+- [ ] Handle complex layout.
+
 ## Algorithm
 
 For details: [rebook](/rebook/README.md)
@@ -20,6 +30,23 @@ python setup.py build_ext
 
 ## Running
 
+### Focal length
+
+Set `focal length` in `/rebook/dewarp.py` line 26. 
+
+To calculate the focal length in pixels based on the angle of view, consider the following example:
+
+- **Lens Specification**: 28mm lens (35mm equivalent)
+- **Angle of View**: 75°
+- **Image Resolution**: 4000x3000 pixels
+
+The focal length in pixels can be computed using the formula:
+
+$$
+\text{Focal Length (pixels)} = \frac{0.5 \times \sqrt{4000^2 + 3000^2}}{\tan\left(\frac{75/2}{180} \times \pi\right)} = 3259
+$$
+
+### Demo
 ```
 python demo.py -ha -l
 ```
