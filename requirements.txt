@@ -5,3 +5,6 @@ scikit-learn
 ultralytics
 rapidocr-onnxruntime
 rtmlib
+rawpy
+numpy<2.0
+

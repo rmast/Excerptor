@@ -1361,11 +1361,11 @@ def go(argv):
         # norm = binarize.ng2014_normalize(lib.clip_u8(gray))
     cv2.imwrite('dewarped.jpg', out[0][0])
 
-def go_dewarp(im, ctr, f_points=[], debug=False):
+def go_dewarp(im, ctr, f_points=[], debug=False, split=False):
     lib.debug = debug
     lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
-    out = kim2014(im, split=False, O=ctr, f_points=f_points)
+    out = kim2014(im, split=split, O=ctr, f_points=f_points)
     return out
 
 if __name__ == '__main__':

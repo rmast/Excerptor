@@ -48,7 +48,7 @@ def feature_sign_search_single(np.ndarray[np.float64_t, ndim=1] y,
     cdef np.ndarray[np.float64_t, ndim=1] theta, A_T_y, theta_hat, x_hat, \
         x_new_hat, ts, null_ts, best_x, diff, L2_partials, L2_partials_abs, \
         f_partials, x_hat_sign, x_new_hat_sign, s
-    cdef np.ndarray[np.int_t, ndim=1] active
+    cdef np.ndarray[np.int32_t, ndim=1] active
     cdef np.ndarray active_set, sign_changes, zero_coeffs
     cdef int lowest_objective, last_selected, i
     cdef double last_objective, direction
