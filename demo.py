@@ -9,6 +9,7 @@ from argparse import ArgumentParser
 from rebook.spliter import book_spliter
 from rebook.dewarp import go_dewarp
 import traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def ill_correct(image):
     im = image.astype(np.float32) / 255.0
@@ -73,6 +74,140 @@ def hand_landmark(image):
             hands_lm.append([keypoint[8][0], keypoint[8][1]]) 
 
     return hands_lm
+
+def process_image(image_path, args_dict):
+    import cv2
+    import numpy as np
+    import traceback
+    # Herhaal relevante imports en initialisaties binnen het process
+    from rapidocr_onnxruntime import RapidOCR
+    from rebook.dewarp import go_dewarp
+    from rebook.spliter import book_spliter
+
+    # Herstel argumenten
+    debug = args_dict['debug']
+    model_seg = args_dict['model_seg']
+    hand_mark = args_dict['hand_mark']
+    line_mark = args_dict['line_mark']
+    white_balance = args_dict['white_balance']
+    archive_folder = args_dict['archive_folder']
+    output_folder = args_dict['output_folder']
+    note_name = args_dict['note_name']
+    scantailor_split = args_dict['scantailor_split']
+    split_pages = args_dict['split_pages']
+
+    # Model en OCR initialisatie (let op: model alleen als nodig)
+    if hand_mark:
+        from rtmlib import Hand, PoseTracker, draw_skeleton
+    if not scantailor_split:
+        from ultralytics import YOLO
+        model = YOLO(model_seg)
+    ocr = RapidOCR()
+
+    original_filename = os.path.basename(image_path)
+    base, ext = os.path.splitext(original_filename)
+    result_lines = []
+    try:
+        frame = cv2.imread(image_path)
+        f_points = []
+        if scantailor_split:
+            book_left = frame
+            book_right = None
+            ctr_l = None
+            ctr_r = None
+            f_points_l = []
+            f_points_r = []
+            re = (book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r)
+        else:
+            if hand_mark:
+                f_points = hand_landmark(frame)
+            results = model(frame)
+            re = book_spliter(frame, results, f_points)
+        if re is not None:
+            book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r = re
+            if scantailor_split:
+                pages = [
+                    ("L", book_left,  ctr_l, f_points_l),
+                ]
+            else:
+                pages = [
+                    ("L", book_left,  ctr_l, f_points_l),
+                    ("R", book_right, ctr_r, f_points_r),
+                ]
+            for side, page_im, page_ctr, page_points in pages:
+                if page_im is None or page_im.size == 0:
+                    result_lines.append(f'{image_path} [{side}]: splitter gaf lege pagina; overslaan')
+                    continue
+                try:
+                    img_dewarped = go_dewarp(
+                        page_im, page_ctr,
+                        debug=debug,
+                        f_points=page_points,
+                        split=split_pages
+                    )
+                    img_dewarped_ill = ill_correct(img_dewarped[0][0])
+                    dewarped_filename   = f"{base}_{side}_dewarped{ext}"
+                    cropped_pic_filename = f"{base}_{side}_dewarped_pic{ext}"
+                    cv2.imwrite(os.path.join(archive_folder, original_filename), frame)
+                    cv2.imwrite(os.path.join(output_folder, dewarped_filename), img_dewarped_ill)
+                    boxes = img_dewarped[0][1]
+                    text_lines = []
+                    cropped_img = None
+                    if boxes is not None:
+                        for box in boxes:
+                            x_min, y_min, x_max, y_max, cont_flag = box
+                            if cont_flag == 1 and text_lines and line_mark:
+                                ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+                                text_lines[-1] += ocr_results[0][0]
+                            elif cont_flag == 0 and line_mark:
+                                ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+                                text_lines.append(ocr_results[0][0])
+                            if cont_flag == 21 and text_lines and hand_mark:
+                                ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+                                text_lines[-1] += ocr_results[0][0]
+                            elif cont_flag == 20 and hand_mark:
+                                ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+                                text_lines.append(ocr_results[0][0])
+                            elif cont_flag == 2:
+                                if white_balance:
+                                    cropped_img = white_balance_correct(img_dewarped[0][0])[y_min:y_max, x_min:x_max]
+                                else:
+                                    cropped_img = img_dewarped_ill[y_min:y_max, x_min:x_max]
+                                cv2.imwrite(os.path.join(output_folder, cropped_pic_filename), cropped_img)
+                    dets, _ = ocr(img_dewarped_ill, use_det=True, use_cls=False, use_rec=False)
+                    dets = dets[:3] + dets[-3:]
+                    ocrs = []
+                    dets = np.array(dets)
+                    for det in dets:
+                        x_min = int(np.min(det[:, 0]))
+                        y_min = int(np.min(det[:, 1]))
+                        x_max = int(np.max(det[:, 0]))
+                        y_max = int(np.max(det[:, 1]))
+                        reocr = ocr(img_dewarped_ill[y_min:y_max,x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+                        ocrs.append(reocr)
+                    best_text = ''
+                    num_percent = 0
+                    for reocr in ocrs:
+                        text = reocr[0][0][0]
+                        if 0 < len(text) <= 6:
+                            digit_count = sum(1 for t in text if t.isdigit())
+                            if digit_count / len(text) > num_percent:
+                                best_text = text
+                                num_percent = digit_count / len(text)
+                    page_number = ''.join(t for t in best_text if t.isdigit())
+                    result_lines.append(f'> Page {page_number}\n')
+                    for line in text_lines:
+                        result_lines.append(f'> - {line}\n')
+                    if cropped_img is not None:
+                        result_lines.append(f'![{cropped_pic_filename}]({output_folder}/{cropped_pic_filename})\n\n')
+                    result_lines.append(f'![{dewarped_filename}]({output_folder}/{dewarped_filename})\n\n')
+                except Exception as e:
+                    result_lines.append(f'Error processing {image_path} [{side}]: dewarp faalde met {e.__class__.__name__}: {e}\n')
+                    traceback.print_exc()
+                    continue
+    except Exception as e:
+        result_lines.append(f'Error processing {image_path}: {e}\n')
+    return base, result_lines
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -146,7 +281,6 @@ if __name__ == '__main__':
         default='note.md',
         help='Model file path for YOLO segment.',
     )
-    # Nieuw argument voor scantailor-split
     parser.add_argument(
         '--scantailor-split',
         action='store_true',
@@ -163,139 +297,33 @@ if __name__ == '__main__':
     archive_folder: str = args.archive_folder
     note_name: str = args.note_name
     scantailor_split: bool = args.scantailor_split
-    
+
     if hand_mark:
         from rtmlib import Hand, PoseTracker, draw_skeleton
 
-    if not scantailor_split:
-        model = YOLO(model_seg)
-    ocr = RapidOCR()
-    os.makedirs(archive_folder, exist_ok=True)
-    os.makedirs(output_folder, exist_ok=True)
-
-
+    args_dict = {
+        'debug': debug,
+        'model_seg': model_seg,
+        'hand_mark': hand_mark,
+        'line_mark': line_mark,
+        'white_balance': white_balance,
+        'archive_folder': archive_folder,
+        'output_folder': output_folder,
+        'note_name': note_name,
+        'scantailor_split': scantailor_split,
+        'split_pages': args.split_pages,
+    }
     image_paths = glob.glob(os.path.join(input_folder, '*.jpg'))
     image_paths += glob.glob(os.path.join(input_folder, '*.jpeg'))
     image_paths += glob.glob(os.path.join(input_folder, '*.png'))
     if image_paths:
         with open(note_name, 'a', encoding='utf-8') as note_file:
-            for image_path in image_paths:
-                original_filename = os.path.basename(image_path)
-                base, ext = os.path.splitext(original_filename)
-                note_file.write(f'Verwerk bestand {base}\n')
-                frame = cv2.imread(image_path)
-                f_points = []
-                # --- scantailor-split mode ---
-                if scantailor_split:
-                    # Interpreteer elke afbeelding als een enkele pagina, geen split, geen ctr/f_points
-                    book_left = frame
-                    book_right = None
-                    ctr_l = None
-                    ctr_r = None
-                    f_points_l = []
-                    f_points_r = []
-                    re = (book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r)
-                else:
-                    if hand_mark:
-                        f_points = hand_landmark(frame)
-                    results = model(frame)
-                    re = book_spliter(frame, results, f_points)
-                
-                if re is not None:
-                    book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r = re
-                    # scantailor-split: alleen linkerpagina vullen
-                    if scantailor_split:
-                        pages = [
-                            ("L", book_left,  ctr_l, f_points_l),
-                        ]
-                    else:
-                        pages = [
-                            ("L", book_left,  ctr_l, f_points_l),
-                            ("R", book_right, ctr_r, f_points_r),
-                        ]
-
-                    for side, page_im, page_ctr, page_points in pages:
-                        # Sla over als de splitter niets bruikbaars vond
-                        if page_im is None or page_im.size == 0:
-                            note_file.write(f'{image_path} [{side}]: splitter gaf lege pagina; overslaan') 
-                            continue
-                        try:
-                            img_dewarped = go_dewarp(
-                                page_im, page_ctr,
-                                debug=debug,
-                                f_points=page_points,
-                                split=args.split_pages            # ← jouw nieuwe CLI‑flag
-                            )
-
-                            # --- Opslaan en OCR ---
-                            img_dewarped_ill = ill_correct(img_dewarped[0][0])
-
-
-                            # unieke bestandsnamen per pagina
-                            dewarped_filename   = f"{base}_{side}_dewarped{ext}"
-                            cropped_pic_filename = f"{base}_{side}_dewarped_pic{ext}"
-
-                            cv2.imwrite(os.path.join(archive_folder, original_filename), frame)
-                            cv2.imwrite(os.path.join(output_folder, dewarped_filename), img_dewarped_ill)
-
-                            boxes = img_dewarped[0][1]
-                            text_lines = []
-                            cropped_img = None
-                            if boxes is not None:
-                                for box in boxes:
-                                    x_min, y_min, x_max, y_max, cont_flag = box
-
-                                    if cont_flag == 1 and text_lines and line_mark:
-                                        ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
-                                        text_lines[-1] += ocr_results[0][0]
-                                    elif cont_flag == 0 and line_mark:
-                                        ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
-                                        text_lines.append(ocr_results[0][0])
-
-                                    if cont_flag == 21 and text_lines and hand_mark:
-                                        ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
-                                        text_lines[-1] += ocr_results[0][0]
-                                    elif cont_flag == 20 and hand_mark:
-                                        ocr_results, _ = ocr(img_dewarped_ill[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
-                                        text_lines.append(ocr_results[0][0])
-
-                                    elif cont_flag == 2:
-                                        if white_balance:
-                                            cropped_img = white_balance_correct(img_dewarped[0][0])[y_min:y_max, x_min:x_max]
-                                        else:
-                                            cropped_img = img_dewarped_ill[y_min:y_max, x_min:x_max]
-                                        cv2.imwrite(os.path.join(output_folder, cropped_pic_filename), cropped_img)
-
-                            #extract page number
-                            dets, _ = ocr(img_dewarped_ill, use_det=True, use_cls=False, use_rec=False)
-                            dets = dets[:3] + dets[-3:]
-                            ocrs = []
-                            dets = np.array(dets)
-                            for det in dets:
-                                x_min = int(np.min(det[:, 0]))
-                                y_min = int(np.min(det[:, 1]))
-                                x_max = int(np.max(det[:, 0]))
-                                y_max = int(np.max(det[:, 1]))
-                                re = ocr(img_dewarped_ill[y_min:y_max,x_min:x_max], use_det=False, use_cls=False, use_rec=True)
-                                ocrs.append(re)
-                            best_text = ''
-                            num_percent = 0
-                            for re in ocrs:
-                                text = re[0][0][0]
-                                if 0 < len(text) <= 6:
-                                    digit_count = sum(1 for t in text if t.isdigit())
-                                    if digit_count / len(text) > num_percent:
-                                        best_text = text
-                                        num_percent = digit_count / len(text)
-                            page_number = ''.join(t for t in best_text if t.isdigit())
-                            note_file.write(f'> Page {page_number}\n')
-                            #text and cropped image
-                            for line in text_lines:
-                                note_file.write(f'> - {line}\n')
-                            if cropped_img is not None:
-                                note_file.write(f'![{cropped_pic_filename}]({output_folder}/{cropped_pic_filename})\n\n')
-                            note_file.write(f'![{dewarped_filename}]({output_folder}/{dewarped_filename})\n\n')
-                        except Exception as e:
-                            note_file.write(f'Error processing {image_path} [{side}]: dewarp faalde met {e.__class__.__name__}: {e}\n')
-                            traceback.print_exc()
-                            continue
+            # Beperk het aantal workers als je CUDA gebruikt
+            max_workers = 2  # Of 1 als je zeker wilt zijn van geen OOM
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(process_image, image_path, args_dict) for image_path in image_paths]
+                for future in as_completed(futures):
+                    base, result_lines = future.result()
+                    note_file.write(f'Verwerk bestand {base}\n')
+                    for line in result_lines:
+                        note_file.write(line)
