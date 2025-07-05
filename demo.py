@@ -146,6 +146,12 @@ if __name__ == '__main__':
         default='note.md',
         help='Model file path for YOLO segment.',
     )
+    # Nieuw argument voor scantailor-split
+    parser.add_argument(
+        '--scantailor-split',
+        action='store_true',
+        help='Interpreteer elke afbeelding als reeds gesplitste pagina (Scantailor output).'
+    )
     args = parser.parse_args()
     debug: bool = args.debug
     model_seg: str = args.model_seg
@@ -156,11 +162,13 @@ if __name__ == '__main__':
     output_folder: str = args.output_folder
     archive_folder: str = args.archive_folder
     note_name: str = args.note_name
+    scantailor_split: bool = args.scantailor_split
     
     if hand_mark:
         from rtmlib import Hand, PoseTracker, draw_skeleton
 
-    model = YOLO(model_seg)
+    if not scantailor_split:
+        model = YOLO(model_seg)
     ocr = RapidOCR()
     os.makedirs(archive_folder, exist_ok=True)
     os.makedirs(output_folder, exist_ok=True)
@@ -177,17 +185,34 @@ if __name__ == '__main__':
                 note_file.write(f'Verwerk bestand {base}\n')
                 frame = cv2.imread(image_path)
                 f_points = []
-                if hand_mark:
-                    f_points = hand_landmark(frame)
-                results = model(frame)
-                re = book_spliter(frame, results, f_points)
+                # --- scantailor-split mode ---
+                if scantailor_split:
+                    # Interpreteer elke afbeelding als een enkele pagina, geen split, geen ctr/f_points
+                    book_left = frame
+                    book_right = None
+                    ctr_l = None
+                    ctr_r = None
+                    f_points_l = []
+                    f_points_r = []
+                    re = (book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r)
+                else:
+                    if hand_mark:
+                        f_points = hand_landmark(frame)
+                    results = model(frame)
+                    re = book_spliter(frame, results, f_points)
                 
                 if re is not None:
                     book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r = re
-                    pages = [
-                        ("L", book_left,  ctr_l, f_points_l),
-                        ("R", book_right, ctr_r, f_points_r),
-                    ]
+                    # scantailor-split: alleen linkerpagina vullen
+                    if scantailor_split:
+                        pages = [
+                            ("L", book_left,  ctr_l, f_points_l),
+                        ]
+                    else:
+                        pages = [
+                            ("L", book_left,  ctr_l, f_points_l),
+                            ("R", book_right, ctr_r, f_points_r),
+                        ]
 
                     for side, page_im, page_ctr, page_points in pages:
                         # Sla over als de splitter niets bruikbaars vond
