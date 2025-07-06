@@ -75,6 +75,25 @@ def hand_landmark(image):
 
     return hands_lm
 
+# Voeg deze hulpfunctie toe om de aspectratio van de invoer te bewaren
+def resize_to_match_aspect(img, ref_shape):
+    """Resize img zodat aspectratio overeenkomt met ref_shape (h, w)."""
+    h, w = ref_shape[:2]
+    aspect_in = img.shape[1] / img.shape[0]
+    aspect_ref = w / h
+    if abs(aspect_in - aspect_ref) < 1e-2:
+        return img  # al goed genoeg
+    # Bepaal nieuwe grootte met behoud van aspectratio
+    if aspect_in > aspect_ref:
+        # img is breder, pas breedte aan
+        new_w = int(img.shape[0] * aspect_ref)
+        resized = cv2.resize(img, (new_w, img.shape[0]), interpolation=cv2.INTER_CUBIC)
+    else:
+        # img is hoger, pas hoogte aan
+        new_h = int(img.shape[1] / aspect_ref)
+        resized = cv2.resize(img, (img.shape[1], new_h), interpolation=cv2.INTER_CUBIC)
+    return resized
+
 def process_image(image_path, args_dict):
     import cv2
     import numpy as np
@@ -109,6 +128,7 @@ def process_image(image_path, args_dict):
     result_lines = []
     try:
         frame = cv2.imread(image_path)
+        input_shape = frame.shape  # Onthoud originele shape
         f_points = []
         if scantailor_split:
             book_left = frame
@@ -145,7 +165,11 @@ def process_image(image_path, args_dict):
                         f_points=page_points,
                         split=split_pages
                     )
-                    img_dewarped_ill = ill_correct(img_dewarped[0][0])
+                    # --- Aspectratio-correctie toevoegen ---
+                    dewarped_img = img_dewarped[0][0]
+                    # Pas aspectratio aan op basis van input_shape
+                    dewarped_img = resize_to_match_aspect(dewarped_img, input_shape)
+                    img_dewarped_ill = ill_correct(dewarped_img)
                     dewarped_filename   = f"{base}_{side}_dewarped{ext}"
                     cropped_pic_filename = f"{base}_{side}_dewarped_pic{ext}"
                     cv2.imwrite(os.path.join(archive_folder, original_filename), frame)
@@ -170,7 +194,7 @@ def process_image(image_path, args_dict):
                                 text_lines.append(ocr_results[0][0])
                             elif cont_flag == 2:
                                 if white_balance:
-                                    cropped_img = white_balance_correct(img_dewarped[0][0])[y_min:y_max, x_min:x_max]
+                                    cropped_img = white_balance_correct(dewarped_img)[y_min:y_max, x_min:x_max]
                                 else:
                                     cropped_img = img_dewarped_ill[y_min:y_max, x_min:x_max]
                                 cv2.imwrite(os.path.join(output_folder, cropped_pic_filename), cropped_img)
