@@ -11,7 +11,7 @@ from rebook.dewarp import go_dewarp
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-def ill_correct(image):
+def ill_correct(image: np.ndarray) -> np.ndarray:
     im = image.astype(np.float32) / 255.0
     gauss = cv2.GaussianBlur(im, (201, 201), 0)
     dst_0 = im / (gauss + 1e-10) * 255
@@ -34,7 +34,7 @@ def ill_correct(image):
 
     return dst_1
 
-def white_balance_correct(image):
+def white_balance_correct(image: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     mean_brightness = np.mean(gray)
     img = cv2.convertScaleAbs(image, alpha=180/mean_brightness, beta=0)
@@ -54,7 +54,7 @@ def white_balance_correct(image):
 
     return balanced_img
 
-def hand_landmark(image):
+def hand_landmark(image: np.ndarray) -> list[list[float]]:
     hand = PoseTracker(
     Hand,
     tracking=False,
@@ -76,7 +76,7 @@ def hand_landmark(image):
     return hands_lm
 
 # Voeg deze hulpfunctie toe om de aspectratio van de invoer te bewaren
-def resize_to_match_aspect(img, ref_shape):
+def resize_to_match_aspect(img: np.ndarray, ref_shape: tuple[int, int, int]) -> np.ndarray:
     """Resize img zodat aspectratio overeenkomt met ref_shape (h, w)."""
     h, w = ref_shape[:2]
     aspect_in = img.shape[1] / img.shape[0]
@@ -94,28 +94,25 @@ def resize_to_match_aspect(img, ref_shape):
         resized = cv2.resize(img, (img.shape[1], new_h), interpolation=cv2.INTER_CUBIC)
     return resized
 
-def process_image(image_path, args_dict):
+def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
     import cv2
     import numpy as np
     import traceback
-    # Herhaal relevante imports en initialisaties binnen het process
     from rapidocr_onnxruntime import RapidOCR
     from rebook.dewarp import go_dewarp
     from rebook.spliter import book_spliter
 
-    # Herstel argumenten
-    debug = args_dict['debug']
-    model_seg = args_dict['model_seg']
-    hand_mark = args_dict['hand_mark']
-    line_mark = args_dict['line_mark']
-    white_balance = args_dict['white_balance']
-    archive_folder = args_dict['archive_folder']
-    output_folder = args_dict['output_folder']
-    note_name = args_dict['note_name']
-    scantailor_split = args_dict['scantailor_split']
-    split_pages = args_dict['split_pages']
+    debug: bool = args_dict['debug']
+    model_seg: str = args_dict['model_seg']
+    hand_mark: bool = args_dict['hand_mark']
+    line_mark: bool = args_dict['line_mark']
+    white_balance: bool = args_dict['white_balance']
+    archive_folder: str = args_dict['archive_folder']
+    output_folder: str = args_dict['output_folder']
+    note_name: str = args_dict['note_name']
+    scantailor_split: bool = args_dict['scantailor_split']
+    split_pages: bool = args_dict['split_pages']
 
-    # Model en OCR initialisatie (let op: model alleen als nodig)
     if hand_mark:
         from rtmlib import Hand, PoseTracker, draw_skeleton
     if not scantailor_split:
@@ -123,20 +120,23 @@ def process_image(image_path, args_dict):
         model = YOLO(model_seg)
     ocr = RapidOCR()
 
-    original_filename = os.path.basename(image_path)
+    original_filename: str = os.path.basename(image_path)
     base, ext = os.path.splitext(original_filename)
-    result_lines = []
+    result_lines: list[str] = []
     try:
         frame = cv2.imread(image_path)
-        input_shape = frame.shape  # Onthoud originele shape
-        f_points = []
+        if frame is None:
+            result_lines.append(f'Error: kon {image_path} niet openen\n')
+            return base, result_lines
+        input_shape: tuple[int, int, int] = frame.shape
+        f_points: list = []
         if scantailor_split:
-            book_left = frame
-            book_right = None
-            ctr_l = None
-            ctr_r = None
-            f_points_l = []
-            f_points_r = []
+            book_left: np.ndarray = frame
+            book_right: None = None
+            ctr_l: None = None
+            ctr_r: None = None
+            f_points_l: list = []
+            f_points_r: list = []
             re = (book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r)
         else:
             if hand_mark:
@@ -146,16 +146,16 @@ def process_image(image_path, args_dict):
         if re is not None:
             book_left, book_right, ctr_l, ctr_r, f_points_l, f_points_r = re
             if scantailor_split:
-                pages = [
+                pages: list[tuple[str, np.ndarray, None, list]] = [
                     ("L", book_left,  ctr_l, f_points_l),
                 ]
             else:
-                pages = [
+                pages: list[tuple[str, np.ndarray, object, list]] = [
                     ("L", book_left,  ctr_l, f_points_l),
                     ("R", book_right, ctr_r, f_points_r),
                 ]
             for side, page_im, page_ctr, page_points in pages:
-                if page_im is None or page_im.size == 0:
+                if page_im is None or getattr(page_im, "size", 0) == 0:
                     result_lines.append(f'{image_path} [{side}]: splitter gaf lege pagina; overslaan')
                     continue
                 try:
@@ -165,18 +165,16 @@ def process_image(image_path, args_dict):
                         f_points=page_points,
                         split=split_pages
                     )
-                    # --- Aspectratio-correctie toevoegen ---
-                    dewarped_img = img_dewarped[0][0]
-                    # Pas aspectratio aan op basis van input_shape
+                    dewarped_img: np.ndarray = img_dewarped[0][0]
                     dewarped_img = resize_to_match_aspect(dewarped_img, input_shape)
-                    img_dewarped_ill = ill_correct(dewarped_img)
-                    dewarped_filename   = f"{base}_{side}_dewarped{ext}"
-                    cropped_pic_filename = f"{base}_{side}_dewarped_pic{ext}"
+                    img_dewarped_ill: np.ndarray = ill_correct(dewarped_img)
+                    dewarped_filename: str = f"{base}_{side}_dewarped{ext}"
+                    cropped_pic_filename: str = f"{base}_{side}_dewarped_pic{ext}"
                     cv2.imwrite(os.path.join(archive_folder, original_filename), frame)
                     cv2.imwrite(os.path.join(output_folder, dewarped_filename), img_dewarped_ill)
                     boxes = img_dewarped[0][1]
-                    text_lines = []
-                    cropped_img = None
+                    text_lines: list[str] = []
+                    cropped_img: np.ndarray | None = None
                     if boxes is not None:
                         for box in boxes:
                             x_min, y_min, x_max, y_max, cont_flag = box
@@ -200,7 +198,7 @@ def process_image(image_path, args_dict):
                                 cv2.imwrite(os.path.join(output_folder, cropped_pic_filename), cropped_img)
                     dets, _ = ocr(img_dewarped_ill, use_det=True, use_cls=False, use_rec=False)
                     dets = dets[:3] + dets[-3:]
-                    ocrs = []
+                    ocrs: list = []
                     dets = np.array(dets)
                     for det in dets:
                         x_min = int(np.min(det[:, 0]))
@@ -209,13 +207,13 @@ def process_image(image_path, args_dict):
                         y_max = int(np.max(det[:, 1]))
                         reocr = ocr(img_dewarped_ill[y_min:y_max,x_min:x_max], use_det=False, use_cls=False, use_rec=True)
                         ocrs.append(reocr)
-                    best_text = ''
-                    num_percent = 0
+                    best_text: str = ''
+                    num_percent: float = 0
                     for reocr in ocrs:
                         text = reocr[0][0][0]
                         if 0 < len(text) <= 6:
                             digit_count = sum(1 for t in text if t.isdigit())
-                            if digit_count / len(text) > num_percent:
+                            if len(text) > 0 and digit_count / len(text) > num_percent:
                                 best_text = text
                                 num_percent = digit_count / len(text)
                     page_number = ''.join(t for t in best_text if t.isdigit())
@@ -340,10 +338,11 @@ if __name__ == '__main__':
     image_paths = glob.glob(os.path.join(input_folder, '*.jpg'))
     image_paths += glob.glob(os.path.join(input_folder, '*.jpeg'))
     image_paths += glob.glob(os.path.join(input_folder, '*.png'))
+    image_paths += glob.glob(os.path.join(input_folder, '*.tif'))
     if image_paths:
         with open(note_name, 'a', encoding='utf-8') as note_file:
             # Beperk het aantal workers als je CUDA gebruikt
-            max_workers = 2  # Of 1 als je zeker wilt zijn van geen OOM
+            max_workers = 5  # Of 1 als je zeker wilt zijn van geen OOM
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(process_image, image_path, args_dict) for image_path in image_paths]
                 for future in as_completed(futures):
