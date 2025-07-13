@@ -415,12 +415,3 @@ if __name__ == '__main__':
                     note_file.write(f'Verwerk bestand {base}\n')
                     for line in result_lines:
                         note_file.write(line)
-            # Beperk het aantal workers als je CUDA gebruikt
-            max_workers = 5  # Of 1 als je zeker wilt zijn van geen OOM
-            with ProcessPoolExecutor(max_workers=max_workers) as executor:
-                futures = [executor.submit(process_image, image_path, args_dict) for image_path in image_paths]
-                for future in as_completed(futures):
-                    base, result_lines = future.result()
-                    note_file.write(f'Verwerk bestand {base}\n')
-                    for line in result_lines:
-                        note_file.write(line)
