@@ -160,11 +160,21 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
                     result_lines.append(f'{image_path} [{side}]: splitter gaf lege pagina; overslaan')
                     continue
                 try:
+                    # Detecteer indexnummers voor betere rechterkantlijn bepaling
+                    index_numbers = detect_index_numbers_for_right_margin(page_im, ocr)
+                    
+                    # Debug visualisatie van indexnummers
+                    if debug and index_numbers:
+                        debug_filename = f"dewarp/index_numbers_{base}_{side}.png"
+                        debug_visualize_index_numbers(page_im, index_numbers, debug_filename)
+                        print(f"Gedetecteerde {len(index_numbers)} indexnummers voor {base}_{side}: {[text for _, text in index_numbers]}")
+                    
                     img_dewarped = go_dewarp(
                         page_im, page_ctr,
                         debug=debug,
                         f_points=page_points,
-                        split=split_pages
+                        split=split_pages,
+                        index_numbers=index_numbers  # Geef indexnummers door
                     )
                     dewarped_img: np.ndarray = img_dewarped[0][0]
                     dewarped_img = resize_to_match_aspect(dewarped_img, input_shape)
@@ -287,6 +297,112 @@ def visualize_textlines_on_image(image: np.ndarray, boxes: list, output_path: st
     
     # Sla visualisatie op
     cv2.imwrite(output_path, vis_image)
+
+def detect_index_numbers_for_right_margin(image: np.ndarray, ocr) -> list[tuple[float, str]]:
+    """
+    Detecteer indexnummers (rechts uitgelijnde paginanummers) om de rechterkantlijn te bepalen.
+    
+    Args:
+        image: Het beeld waarin indexnummers gedetecteerd moeten worden
+        ocr: De OCR engine
+        
+    Returns:
+        List van (x_position, text) tuples voor gedetecteerde indexnummers
+    """
+    import re
+    from rebook import lib
+    
+    # Detecteer alle tekstblokken
+    dets, _ = ocr(image, use_det=True, use_cls=False, use_rec=False)
+    if dets is None or len(dets) == 0:
+        return []
+    
+    image_height, image_width = image.shape[:2]
+    
+    # Filter op rechter kant van de afbeelding (rechter 40%)
+    right_threshold = image_width * 0.6
+    index_numbers = []
+    
+    for det in dets:
+        # Bereken bounding box - det kan verschillende formaten hebben
+        try:
+            if isinstance(det, (list, tuple)):
+                det = np.array(det)
+            
+            # Als det 4 punten heeft (bbox format), gebruik min/max
+            if det.shape == (4, 2):
+                x_min = int(np.min(det[:, 0]))
+                y_min = int(np.min(det[:, 1]))
+                x_max = int(np.max(det[:, 0]))
+                y_max = int(np.max(det[:, 1]))
+            else:
+                # Anders probeer als rechthoek [x_min, y_min, x_max, y_max]
+                if len(det) == 4:
+                    x_min, y_min, x_max, y_max = map(int, det)
+                else:
+                    continue  # Skip onbekende formaten
+        except Exception as e:
+            if lib.debug:
+                print(f"Probleem met det format: {det}, error: {e}")
+            continue
+        
+        # Skip als het niet aan de rechterkant is
+        if x_min < right_threshold:
+            continue
+            
+        # OCR op dit tekstblok
+        try:
+            reocr = ocr(image[y_min:y_max, x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+            if reocr and len(reocr[0]) > 0:
+                text = reocr[0][0][0]
+                
+                # Check of het een paginanummer is (alleen cijfers, max 6 karakters)
+                # Patroon: gehele getallen of getallen met koppelteken (34-35)
+                if re.match(r'^\d{1,4}(-\d{1,4})?$', text.strip()):
+                    # Gebruik rechterkant van bounding box als positie
+                    x_position = x_max
+                    index_numbers.append((x_position, text.strip()))
+                    
+        except Exception as e:
+            # Skip problematische OCR
+            continue
+    
+    return index_numbers
+
+def debug_visualize_index_numbers(image: np.ndarray, index_numbers: list[tuple[float, str]], debug_filename: str) -> None:
+    """
+    Visualiseer de gedetecteerde indexnummers op de afbeelding voor debugging.
+    
+    Args:
+        image: Het originele beeld
+        index_numbers: Lijst van (x_position, text) tuples
+        debug_filename: Naam van het debug bestand
+    """
+    if not index_numbers:
+        return
+        
+    debug_img = image.copy()
+    if len(debug_img.shape) == 2:  # Grayscale
+        debug_img = cv2.cvtColor(debug_img, cv2.COLOR_GRAY2BGR)
+    
+    # Teken alle gedetecteerde indexnummers
+    for i, (x_pos, text) in enumerate(index_numbers):
+        # Teken verticale lijn op x-positie
+        cv2.line(debug_img, (int(x_pos), 0), (int(x_pos), debug_img.shape[0]), (0, 255, 0), 2)
+        
+        # Voeg tekst toe
+        y_pos = 30 + (i % 10) * 25  # Verspreid labels verticaal
+        cv2.putText(debug_img, f"{text}@{x_pos:.0f}", (int(x_pos) - 30, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    
+    # Teken mediane lijn
+    if len(index_numbers) > 0:
+        median_x = np.median([x_pos for x_pos, _ in index_numbers])
+        cv2.line(debug_img, (int(median_x), 0), (int(median_x), debug_img.shape[0]), (0, 0, 255), 3)
+        cv2.putText(debug_img, f"Median: {median_x:.0f}", (int(median_x) - 50, debug_img.shape[0] - 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+    
+    cv2.imwrite(debug_filename, debug_img)
 
 if __name__ == '__main__':
     parser = ArgumentParser()

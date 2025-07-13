@@ -49,11 +49,28 @@ class LinearXModel(object):
     def residuals(self, data):
         return abs(self.params(data[:, 1]) - data[:, 0])
 
-def side_lines(AH, lines):
+def side_lines(AH, lines, index_numbers=None):
     im_h, _ = bw.shape
 
     left_bounds = np.array([l.original_letters[0].left_mid() for l in lines])
     right_bounds = np.array([l.original_letters[-1].right_mid() for l in lines])
+    
+    # Gebruik indexnummers voor rechterkantlijn als beschikbaar
+    if index_numbers and len(index_numbers) >= 3:
+        # Gebruik de x-posities van de indexnummers voor de rechterkantlijn
+        index_x_positions = [x_pos for x_pos, _ in index_numbers]
+        
+        # Vervang right_bounds door indexnummer posities als ze consistent zijn
+        if len(index_x_positions) >= len(right_bounds) // 2:  # Als we genoeg indexnummers hebben
+            # Gebruik mediane x-positie als basis voor rechterlijn
+            median_x = np.median(index_x_positions)
+            
+            # Creëer verticale lijn op basis van indexnummers
+            index_y_positions = np.linspace(0, im_h, len(index_x_positions))
+            right_bounds = np.column_stack([index_x_positions, index_y_positions])
+            
+            if lib.debug:
+                print(f"Gebruikt {len(index_numbers)} indexnummers voor rechterkantlijn bepaling (mediaan x={median_x:.1f})")
 
     vertical_lines = []
     debug = cv2.cvtColor(bw, cv2.COLOR_GRAY2BGR)
@@ -69,8 +86,8 @@ def side_lines(AH, lines):
 
     return vertical_lines
 
-def estimate_vanishing(AH, lines):
-    p_left, p_right = side_lines(AH, lines)
+def estimate_vanishing(AH, lines, index_numbers=None):
+    p_left, p_right = side_lines(AH, lines, index_numbers)
     vy, = (p_left - p_right).roots()
     return np.array((p_left(vy), vy))
 
@@ -147,7 +164,7 @@ def remove_outliers(im, AH, lines, line_len):
     return merge_lines(AH, result)
 
 # @lib.timeit
-def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[]):
+def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], index_numbers=None):
     # coordinates (u, v) on mesh -> mesh[u][v] = (x, y) in distorted image
     mesh32 = mesh.astype(np.float32)
     xmesh, ymesh = mesh32[:, :, 0], mesh32[:, :, 1]
@@ -164,7 +181,7 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[]):
 
     im = binarize.binarize(out_0, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
     AH, lines, underlines, all_letters = get_AH_lines_fine(im)
-    out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points)
+    out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers)
     
     lib.debug_imwrite('corrected.png', out[0])
 
@@ -1058,7 +1075,7 @@ def lsq(func, jac, x_scale):
 
     return result
 
-def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[]):
+def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[], index_numbers=None):
     lib.debug_imwrite('gray.png', binarize.grayscale(orig))
     im = binarize.binarize(orig, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
     global bw
@@ -1117,7 +1134,7 @@ def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[]):
 
             bw = page_bw
             dewarper = Kim2014(page_image, page_bw, page_lines, [page_lines],
-                               new_O, page_AH, n_points_w, f_points)
+                               new_O, page_AH, n_points_w, f_points, index_numbers)
             result.append(dewarper.run_retry()[0])
 
             lib.debug_prefix.pop()
@@ -1125,12 +1142,12 @@ def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[]):
         return result
     else:
         lib.debug_prefix.append('page0')
-        dewarper = Kim2014(orig, im, lines, [lines], all_letters, O, AH, n_points_w, f_points)
+        dewarper = Kim2014(orig, im, lines, [lines], all_letters, O, AH, n_points_w, f_points, index_numbers)
         lib.debug_prefix.pop()
         return dewarper.run_retry()
 
 class Kim2014(object):
-    def __init__(self, orig, im, lines, pages, all_letters, O, AH, n_points_w, f_points):
+    def __init__(self, orig, im, lines, pages, all_letters, O, AH, n_points_w, f_points, index_numbers=None):
         self.orig = orig
         self.im = im
         self.lines = lines
@@ -1140,6 +1157,7 @@ class Kim2014(object):
         self.n_points_w = n_points_w
         self.all_letters = all_letters
         self.f_points = f_points
+        self.index_numbers = index_numbers
 
         for page in self.pages:
             page.sort(key=lambda l: l[0].y)
@@ -1160,7 +1178,7 @@ class Kim2014(object):
 
     def initial_args(self):
         # Estimate viewpoint from vanishing point
-        vanishing_points = [estimate_vanishing(self.AH, page) \
+        vanishing_points = [estimate_vanishing(self.AH, page, self.index_numbers) \
                             for page in self.pages]
         mean_image_vanishing = np.mean(vanishing_points, axis=0)
         vanishing = np.concatenate([mean_image_vanishing - self.O, [-f]])
@@ -1342,7 +1360,7 @@ class Kim2014(object):
         mesh_2ds = make_mesh_2d(self.orig.shape[:2], self.lines, self.all_letters, self.O, R, g, n_points_w=self.n_points_w)
         result = []
         for mesh_2d in mesh_2ds:
-            first_pass = correct_geometry(self.orig, mesh_2d, interpolation=cv2.INTER_LANCZOS4, f_points=self.f_points)
+            first_pass = correct_geometry(self.orig, mesh_2d, interpolation=cv2.INTER_LANCZOS4, f_points=self.f_points, index_numbers=self.index_numbers)
             result.append(first_pass)
 
         return result
@@ -1361,11 +1379,11 @@ def go(argv):
         # norm = binarize.ng2014_normalize(lib.clip_u8(gray))
     cv2.imwrite('dewarped.jpg', out[0][0])
 
-def go_dewarp(im, ctr, f_points=[], debug=False, split=False):
+def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None):
     lib.debug = debug
     lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
-    out = kim2014(im, split=split, O=ctr, f_points=f_points)
+    out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers)
     return out
 
 if __name__ == '__main__':

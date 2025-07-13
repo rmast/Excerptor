@@ -377,7 +377,7 @@ def fast_stroke_width(im):
     return dists
 
 # only after rotation!
-def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points):
+def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points, index_numbers=None):
     im_h, im_w = im.shape[:2]
     debug = out_0.copy()
     points = []
@@ -413,6 +413,25 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points):
     # align fine dewarp
     left_bounds = np.array([l.original_letters[0].left_mid() for l in lines if len(l) > 10])
     right_bounds = np.array([l.original_letters[-1].right_mid() for l in lines if len(l) > 10])
+    
+    # Gebruik indexnummers voor rechterkantlijn als beschikbaar
+    if index_numbers and len(index_numbers) >= 3:
+        im_h, im_w = im.shape
+        # Gebruik de x-posities van de indexnummers voor de rechterkantlijn
+        index_x_positions = np.array([x_pos for x_pos, _ in index_numbers])
+        
+        # Vervang right_bounds door indexnummer posities als ze consistent zijn
+        if len(index_x_positions) >= len(right_bounds) // 2:  # Als we genoeg indexnummers hebben
+            # Gebruik mediane x-positie als basis voor rechterlijn
+            median_x = np.median(index_x_positions)
+            
+            # Creëer verticale punten op basis van indexnummers, verspreid over de hoogte
+            index_y_positions = np.linspace(0, im_h, len(index_x_positions))
+            right_bounds = np.column_stack([index_x_positions, index_y_positions])
+            
+            if lib.debug:
+                print(f"[fine_dewarp] Gebruikt {len(index_numbers)} indexnummers voor rechterkantlijn bepaling (mediaan x={median_x:.1f})")
+    
     # x = my + b model weighted t
     class LinearXModel(object):
         def estimate(self, data):
@@ -425,10 +444,58 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points):
     vertical_lines = []
     points_in_vertical_liner = []
     for coords in [left_bounds, right_bounds]:
-        model, inliers = ransac(coords, LinearXModel, 3, AH / 10.0)
-        vertical_lines.append(model.params)
-        ps = [p for p, inlier in zip(coords, inliers) if inlier]
-        points_in_vertical_liner.append(ps)
+        # Controleer of er voldoende punten zijn voor RANSAC
+        if len(coords) < 3:
+            if lib.debug:
+                print(f"Waarschuwing: Slechts {len(coords)} punten voor verticale lijn detectie in fine_dewarp")
+            # Gebruik een eenvoudige lineaire fit als er te weinig punten zijn
+            if len(coords) >= 2:
+                model = LinearXModel()
+                model.estimate(coords)
+                vertical_lines.append(model.params)
+                points_in_vertical_liner.append(coords.tolist())
+            else:
+                # Als er te weinig punten zijn, maak een verticale lijn
+                if len(coords) == 1:
+                    x_coord = coords[0][0]
+                    # Maak een verticale lijn: x = constant (bijna verticaal)
+                    from numpy.polynomial import Polynomial
+                    model_params = Polynomial([x_coord, 0.0001])  # x = x_coord + 0.0001*y (bijna verticaal)
+                    vertical_lines.append(model_params)
+                    points_in_vertical_liner.append(coords.tolist())
+                else:
+                    # Geen punten beschikbaar - gebruik standaard waarde
+                    vertical_lines.append(None)
+                    points_in_vertical_liner.append([])
+            continue
+            
+        # Normale RANSAC fit
+        try:
+            # Gebruik min_samples gebaseerd op aantal beschikbare punten
+            min_samples = min(3, len(coords))
+            # Gebruik een strengere threshold om uitschieters (zoals paginanummers) te negeren
+            threshold = max(AH / 20.0, 3.0)  # Minimaal 3 pixels tolerance
+            model, inliers = ransac(coords, LinearXModel, min_samples, threshold)
+            if model is not None:
+                vertical_lines.append(model.params)
+                ps = [p for p, inlier in zip(coords, inliers) if inlier]
+                points_in_vertical_liner.append(ps)
+            else:
+                if lib.debug:
+                    print("RANSAC faalde in fine_dewarp, gebruik eenvoudige lineaire fit")
+                # Fallback naar eenvoudige lineaire fit
+                model = LinearXModel()
+                model.estimate(coords)
+                vertical_lines.append(model.params)
+                points_in_vertical_liner.append(coords.tolist())
+        except Exception as e:
+            if lib.debug:
+                print(f"Fout bij RANSAC in fine_dewarp: {e}, gebruik eenvoudige lineaire fit")
+            # Fallback naar eenvoudige lineaire fit
+            model = LinearXModel()
+            model.estimate(coords)
+            vertical_lines.append(model.params)
+            points_in_vertical_liner.append(coords.tolist())
     
     # x_offsets = []
     # for ps in points_in_vertical_liner:
@@ -483,8 +550,30 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points):
 
     control_points = []
     for p in vertical_lines:
-        control_points.append([p(0), 0])
-        control_points.append([p(im_h), im_h])
+        if p is not None:
+            control_points.append([p(0), 0])
+            control_points.append([p(im_h), im_h])
+        else:
+            # Gebruik standaard verticale lijnen als er geen detectie is
+            if len(control_points) == 0:  # linkerrand
+                control_points.append([0, 0])
+                control_points.append([0, im_h])
+            else:  # rechterrand
+                control_points.append([im_w, 0])
+                control_points.append([im_w, im_h])
+
+    # Controleer of we voldoende control points hebben
+    if len(control_points) < 4:
+        if lib.debug:
+            print("Waarschuwing: Onvoldoende control points, gebruik standaard waarden")
+        # Vul aan met standaard waarden
+        while len(control_points) < 4:
+            if len(control_points) == 2:
+                control_points.append([im_w, 0])
+                control_points.append([im_w, im_h])
+            else:
+                control_points.append([0, 0])
+                control_points.append([0, im_h])
 
     page_pad_left = 3*AH   #max(min(abs(control_points[0][0]), abs(control_points[1][0])), 2*AH)
     page_pad_right = 3*AH  #max(min(abs(control_points[2][0] - im_w), abs(control_points[3][0] - im_w)), 2*AH)
