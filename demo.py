@@ -107,6 +107,7 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
     hand_mark: bool = args_dict['hand_mark']
     line_mark: bool = args_dict['line_mark']
     white_balance: bool = args_dict['white_balance']
+    visualize_textlines: bool = args_dict['visualize_textlines']
     archive_folder: str = args_dict['archive_folder']
     output_folder: str = args_dict['output_folder']
     note_name: str = args_dict['note_name']
@@ -173,6 +174,13 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
                     cv2.imwrite(os.path.join(archive_folder, original_filename), frame)
                     cv2.imwrite(os.path.join(output_folder, dewarped_filename), img_dewarped_ill)
                     boxes = img_dewarped[0][1]
+                    
+                    # Visualiseer textlines op originele afbeelding
+                    if visualize_textlines and boxes is not None:
+                        textlines_filename = f"{base}_{side}_textlines{ext}"
+                        textlines_path = os.path.join(output_folder, textlines_filename)
+                        visualize_textlines_on_image(page_im, boxes, textlines_path)
+                    
                     text_lines: list[str] = []
                     cropped_img: np.ndarray | None = None
                     if boxes is not None:
@@ -197,31 +205,40 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
                                     cropped_img = img_dewarped_ill[y_min:y_max, x_min:x_max]
                                 cv2.imwrite(os.path.join(output_folder, cropped_pic_filename), cropped_img)
                     dets, _ = ocr(img_dewarped_ill, use_det=True, use_cls=False, use_rec=False)
-                    dets = dets[:3] + dets[-3:]
-                    ocrs: list = []
-                    dets = np.array(dets)
-                    for det in dets:
-                        x_min = int(np.min(det[:, 0]))
-                        y_min = int(np.min(det[:, 1]))
-                        x_max = int(np.max(det[:, 0]))
-                        y_max = int(np.max(det[:, 1]))
-                        reocr = ocr(img_dewarped_ill[y_min:y_max,x_min:x_max], use_det=False, use_cls=False, use_rec=True)
-                        ocrs.append(reocr)
-                    best_text: str = ''
-                    num_percent: float = 0
-                    for reocr in ocrs:
-                        text = reocr[0][0][0]
-                        if 0 < len(text) <= 6:
-                            digit_count = sum(1 for t in text if t.isdigit())
-                            if len(text) > 0 and digit_count / len(text) > num_percent:
-                                best_text = text
-                                num_percent = digit_count / len(text)
-                    page_number = ''.join(t for t in best_text if t.isdigit())
+                    if dets is not None and len(dets) > 0:
+                        dets = dets[:3] + dets[-3:]
+                        ocrs: list = []
+                        dets = np.array(dets)
+                        for det in dets:
+                            x_min = int(np.min(det[:, 0]))
+                            y_min = int(np.min(det[:, 1]))
+                            x_max = int(np.max(det[:, 0]))
+                            y_max = int(np.max(det[:, 1]))
+                            reocr = ocr(img_dewarped_ill[y_min:y_max,x_min:x_max], use_det=False, use_cls=False, use_rec=True)
+                            ocrs.append(reocr)
+                        best_text: str = ''
+                        num_percent: float = 0
+                        for reocr in ocrs:
+                            text = reocr[0][0][0]
+                            if 0 < len(text) <= 6:
+                                digit_count = sum(1 for t in text if t.isdigit())
+                                if len(text) > 0 and digit_count / len(text) > num_percent:
+                                    best_text = text
+                                    num_percent = digit_count / len(text)
+                        page_number = ''.join(t for t in best_text if t.isdigit())
+                    else:
+                        page_number = ''
                     result_lines.append(f'> Page {page_number}\n')
                     for line in text_lines:
                         result_lines.append(f'> - {line}\n')
                     if cropped_img is not None:
                         result_lines.append(f'![{cropped_pic_filename}]({output_folder}/{cropped_pic_filename})\n\n')
+                    
+                    # Voeg textlines-visualisatie toe aan output
+                    if visualize_textlines and boxes is not None:
+                        textlines_filename = f"{base}_{side}_textlines{ext}"
+                        result_lines.append(f'![{textlines_filename}]({output_folder}/{textlines_filename})\n\n')
+                    
                     result_lines.append(f'![{dewarped_filename}]({output_folder}/{dewarped_filename})\n\n')
                 except Exception as e:
                     result_lines.append(f'Error processing {image_path} [{side}]: dewarp faalde met {e.__class__.__name__}: {e}\n')
@@ -230,6 +247,46 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
     except Exception as e:
         result_lines.append(f'Error processing {image_path}: {e}\n')
     return base, result_lines
+
+def visualize_textlines_on_image(image: np.ndarray, boxes: list, output_path: str) -> None:
+    """
+    Visualiseer de gedetecteerde textlines op het originele beeld.
+    
+    Args:
+        image: Het originele beeld (numpy array)
+        boxes: Lijst van bounding boxes [x_min, y_min, x_max, y_max, cont_flag]
+        output_path: Pad waar de visualisatie wordt opgeslagen
+    """
+    if boxes is None or len(boxes) == 0:
+        return
+    
+    # Maak een kopie van het beeld voor visualisatie
+    vis_image = image.copy()
+    
+    # Kleuren voor verschillende types
+    colors = {
+        0: (0, 255, 0),    # Groen voor normale textlines
+        1: (0, 255, 255),  # Geel voor voortzetting textlines
+        2: (255, 0, 0),    # Blauw voor afbeeldingen
+        20: (255, 0, 255), # Magenta voor hand-gemarkeeerde tekst
+        21: (255, 0, 255), # Magenta voor hand-gemarkeeerde tekst (voortzetting)
+    }
+    
+    # Teken alle bounding boxes
+    for box in boxes:
+        x_min, y_min, x_max, y_max, cont_flag = box
+        color = colors.get(cont_flag, (128, 128, 128))  # Grijs als fallback
+        
+        # Teken rechthoek
+        cv2.rectangle(vis_image, (x_min, y_min), (x_max, y_max), color, 2)
+        
+        # Voeg label toe
+        label = f"T{cont_flag}"
+        cv2.putText(vis_image, label, (x_min, y_min - 5), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+    
+    # Sla visualisatie op
+    cv2.imwrite(output_path, vis_image)
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -308,12 +365,19 @@ if __name__ == '__main__':
         action='store_true',
         help='Interpreteer elke afbeelding als reeds gesplitste pagina (Scantailor output).'
     )
+    parser.add_argument(
+        '-vt',
+        '--visualize_textlines',
+        action='store_true',
+        help='Save visualization of detected textlines on original image.',
+    )
     args = parser.parse_args()
     debug: bool = args.debug
     model_seg: str = args.model_seg
     hand_mark: bool = args.hand_mark
     line_mark: bool = args.line_mark
     white_balance: bool = args.white_balance
+    visualize_textlines: bool = args.visualize_textlines
     input_folder: str = args.input_folder
     output_folder: str = args.output_folder
     archive_folder: str = args.archive_folder
@@ -329,6 +393,7 @@ if __name__ == '__main__':
         'hand_mark': hand_mark,
         'line_mark': line_mark,
         'white_balance': white_balance,
+        'visualize_textlines': visualize_textlines,
         'archive_folder': archive_folder,
         'output_folder': output_folder,
         'note_name': note_name,
@@ -341,6 +406,15 @@ if __name__ == '__main__':
     image_paths += glob.glob(os.path.join(input_folder, '*.tif'))
     if image_paths:
         with open(note_name, 'a', encoding='utf-8') as note_file:
+            # Beperk het aantal workers als je CUDA gebruikt
+            max_workers = 5  # Of 1 als je zeker wilt zijn van geen OOM
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(process_image, image_path, args_dict) for image_path in image_paths]
+                for future in as_completed(futures):
+                    base, result_lines = future.result()
+                    note_file.write(f'Verwerk bestand {base}\n')
+                    for line in result_lines:
+                        note_file.write(line)
             # Beperk het aantal workers als je CUDA gebruikt
             max_workers = 5  # Of 1 als je zeker wilt zijn van geen OOM
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
