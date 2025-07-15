@@ -201,3 +201,33 @@ grep -n "gcs_to_image\|project_to_image" rebook/dewarp.py
 - `Kim2014.debug_images()` - tekent groene lijnen (surface_lines.png)
 - `make_mesh_2d()` - roept make_mesh_2d_indiv aan
 - `line_base_points_modeled()` - mogelijk nog niet geüpdatet
+
+### **Post-Undo Test Results**:
+- **f=5000**: ❌ **Same crash as before** - IndexError in algorithm.fine_dewarp
+- **Error**: `index 5112 is out of bounds for axis 0 with size 5112` (exactly at boundary)
+- **Warning**: `SmoothBivariateSpline` storage space warning
+- **Status**: Undo didn't solve the problem - crash exists in baseline code
+
+### **Critical Insight**:
+- **Crash exists in original code** - not caused by our CameraParams changes
+- **Edge case at f=5000** - index exactly at array boundary (5112/5112)
+- **fine_dewarp issue** - coordinate calculation produces out-of-bounds index
+- **Root cause**: Original code not robust for higher f values
+
+### **Revised Strategy**:
+1. **Fix bounds checking** in algorithm.fine_dewarp (robustness issue)
+2. **Then implement** minimal debug visualization fix
+3. **Separate concerns** - crash prevention vs. centrum-trek visualization
+
+### **Immediate Fix Needed**:
+```python
+# In algorithm.py line 640 area:
+# Add bounds checking: min(point_2[0], conv_xmesh.shape[0]-1)
+```
+
+### **Two-Phase Plan**:
+1. **Phase A**: Fix IndexError crash (robustness)
+2. **Phase B**: Fix centrum-trek visualization (debug consistency)
+
+### **Next Action**:
+Fix the IndexError crash first - dit is een robustness issue, geen centrum-trek issue

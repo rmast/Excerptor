@@ -26,7 +26,7 @@ Samsung S22U, 3230
 f = 3230
 THRESHOLD_MULT = 1.0
 
-# Camera parameter object - fix voor centrum-trek effect
+# Camera parameter object - alleen voor debug visualisatie
 class CameraParams:
     def __init__(self, f, O):
         self.f = float(f)
@@ -1326,8 +1326,8 @@ class Kim2014(object):
         debug = cv2.cvtColor(self.im, cv2.COLOR_GRAY2BGR)
         ts_surface = E_str_project(R, g, self.base_points, 0)
 
-        # debug_plot_g(g, ts_surface)
-        # debug_jac(theta, R, g, l_m, base_points, ts_surface)
+        # Gebruik vaste f=3230 voor consistente debug visualisatie
+        debug_camera = CameraParams(3230, self.O)
 
         for Y, (_, points_XYZ) in zip(l_m, ts_surface):
             Xs, Ys, _ = points_XYZ
@@ -1337,7 +1337,14 @@ class Kim2014(object):
             line_Ys = np.full((100,), Y)
             line_Zs = g(line_Xs)
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
-            line_2d = gcs_to_image(line_XYZ, self.O, R).T
+            
+            # Projectie met debug camera (vaste f=3230)
+            image_coords = np.tensordot(inv(R), line_XYZ, axes=1)
+            image_coords_T = image_coords.T
+            image_coords_T += debug_camera.Of
+            projected = (image_coords * debug_camera.FOCAL_PLANE_Z / image_coords[2])[0:2]
+            line_2d = (projected.T + debug_camera.O).T.T
+            
             for p0, p1 in zip(line_2d, line_2d[1:]):
                 draw_line(debug, p0, p1, GREEN, 4)
 
@@ -1346,7 +1353,14 @@ class Kim2014(object):
             line_Ys = np.array([-10000, 10000])
             line_Zs = g(line_Xs)
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
-            line_2d = gcs_to_image(line_XYZ, self.O, R).T
+            
+            # Projectie met debug camera (vaste f=3230)
+            image_coords = np.tensordot(inv(R), line_XYZ, axes=1)
+            image_coords_T = image_coords.T
+            image_coords_T += debug_camera.Of
+            projected = (image_coords * debug_camera.FOCAL_PLANE_Z / image_coords[2])[0:2]
+            line_2d = (projected.T + debug_camera.O).T.T
+            
             for p0, p1 in zip(line_2d, line_2d[1:]):
                 draw_line(debug, p0, p1, RED, 4)
 
@@ -1355,7 +1369,14 @@ class Kim2014(object):
             line_Ys = np.array([-10000, 10000])
             line_Zs = g(line_Xs)
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
-            line_2d = gcs_to_image(line_XYZ, self.O, R).T
+            
+            # Projectie met debug camera (vaste f=3230)
+            image_coords = np.tensordot(inv(R), line_XYZ, axes=1)
+            image_coords_T = image_coords.T
+            image_coords_T += debug_camera.Of
+            projected = (image_coords * debug_camera.FOCAL_PLANE_Z / image_coords[2])[0:2]
+            line_2d = (projected.T + debug_camera.O).T.T
+            
             draw_line(debug, line_2d[0], line_2d[1], BLUE, 4)
 
         lib.debug_imwrite('surface_lines.png', debug)
