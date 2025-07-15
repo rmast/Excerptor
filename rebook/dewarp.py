@@ -988,8 +988,16 @@ def make_mesh_2d_indiv(all_lines, corners_XYZ, O, R, g, n_points_w=None):
                                                    int(n_points_w))
     mesh_XYZ_x_arc, _ = mesh_XYZ_xz_arc
 
+    # --- ROBUSTNESS: voorkom deling door nul of ∞ -------------------------
+    if not np.isfinite(total_arc) or total_arc <= 1e-6:
+        # fallback: gebruik horizontale box-breedte als benadering
+        total_arc = max(abs(box_XYZ.w), 1.0)
+        if lib.debug: print('WARNING: total_arc fallback used, value:', total_arc)
+    # -----------------------------------------------------------------------
+
     # TODO: think more about estimation of aspect ratio for mesh
     n_points_h = int(n_points_w * box_XYZ.h / total_arc)
+    n_points_h = max(n_points_h, 2)  # minimaal 2 rijen
     # n_points_h = n_points_w * 1.7
 
     mesh_XYZ_y = np.linspace(box_XYZ.y0, box_XYZ.y1, n_points_h)
@@ -1075,7 +1083,13 @@ def lsq(func, jac, x_scale):
 
     return result
 
-def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[], index_numbers=None):
+def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[], index_numbers=None, flatbed=False):
+    # Flatbed-modus: vrijwel orthografisch → grote f + agressiever filter
+    if flatbed:
+        global f
+        f = 10000  # ≈ orthografische projectie
+        # TODO: implement THRESHOLD_MULT scaling here
+
     lib.debug_imwrite('gray.png', binarize.grayscale(orig))
     im = binarize.binarize(orig, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
     global bw
@@ -1379,12 +1393,9 @@ def go(argv):
         # norm = binarize.ng2014_normalize(lib.clip_u8(gray))
     cv2.imwrite('dewarped.jpg', out[0][0])
 
-def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None):
+def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None, flatbed=False):
     lib.debug = debug
     lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
-    out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers)
+    out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers, flatbed=flatbed)
     return out
-
-if __name__ == '__main__':
-    go(sys.argv)
