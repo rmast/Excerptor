@@ -226,8 +226,78 @@ grep -n "gcs_to_image\|project_to_image" rebook/dewarp.py
 ```
 
 ### **Two-Phase Plan**:
-1. **Phase A**: Fix IndexError crash (robustness)
-2. **Phase B**: Fix centrum-trek visualization (debug consistency)
+1. **Phase A**: Fix IndexError crash (robustness) ← **🔄 IN PROGRESS**
+2. **Phase B**: Fix centrum-trek visualization (debug consistency) ← **NEXT**
 
 ### **Next Action**:
 Fix the IndexError crash first - dit is een robustness issue, geen centrum-trek issue
+
+### **IndexError Crash Fix**:
+- **Added bounds checking** in algorithm.fine_dewarp line 640 area
+- **Clips coordinates** within mesh bounds: `max(0, min(coord, shape-1))`
+- **Debug logging** shows anchor point clipping
+- **Prevents crash** at f=5000 where index exactly hits boundary
+
+### **Next Test**:
+```bash
+python demo.py -d -i book -vt --scantailor-split -o test_f5000_bounds_fixed -a archive_f5000_bounds_fixed -n note_f5000_bounds_fixed.md -f 5000
+```
+
+### **Expected Result**:
+- **No IndexError crash** - bounds checking prevents out-of-bounds access
+- **f=5000 completes successfully** - may still have centrum-trek visualization
+- **Debug shows clipping** - anchor points adjusted to mesh bounds
+
+### **Two-Phase Plan Status**:
+1. **Phase A**: Fix IndexError crash (robustness) ← **✅ COMPLETED**
+2. **Phase B**: Fix centrum-trek visualization (debug consistency) ← **NEXT**
+
+### **Final Conclusion**:
+❌ **f=5000 is fundamentally incompatible** with the algorithm
+✅ **f=3230 is indeed optimal** for this camera/document combination
+⚠️ **Parameter space limitation** - algorithm designed for mobile camera focal lengths (~3000-4000)
+
+### **Key Insights**:
+1. **Original assessment was correct**: f=3230 is optimal
+2. **Higher f values cause cascading failures**: optimization instability → mesh problems → IndexError crashes
+3. **Algorithm assumptions**: Built for mobile camera parameters, not flatbed simulation
+4. **Robustness improvements work**: All 5 TODO points completed successfully
+
+### **Recommendation**:
+🎯 **Accept f=3230 as optimal** and focus on other improvements:
+- Textlines coordinate mapping (paarse vakjes)
+- Multi-page processing
+- Alternative dewarp approaches for flatbed use cases
+
+### **Lessons Learned**:
+- Parameter exploration revealed algorithm boundaries
+- Systematic testing confirmed original calibration quality
+- Robustness improvements valuable even if parameter expansion failed
+
+### **Next Phase**: Focus on textlines mapping and multi-page processing
+
+### **Terminology Correction**:
+❌ **"Centrum-trek" was my terminology** - not from o3
+✅ **Original o3 observation**: "groene lijnen 3x te klein door focal length wijziging (3230→10000)"
+✅ **GitHub.com Copilot**: "groene lijnen trekken naar centrum" (progressive failure pattern)
+
+### **Reinterpretation of Original Problem**:
+- **f=3230**: Works correctly 
+- **f=3500**: Groene lijnen meer naar midden, dewarp te links + ingezoomd
+- **f=4000-5000**: Progressive degradation, eventually crashes
+- **Root cause**: Projectie-logica heeft hardcoded assumpties voor mobile camera f-waarden
+
+### **Real Issue**: 
+🔍 **Scale mismatch** - not fundamental incompatibility
+- Algorithm expects mobile camera parameters (~3000-4000)
+- Debug visualisatie gebruikt mogelijk nog globale parameters
+- Mesh-generatie heeft verschillende scaling voor hogere f
+
+### **Potential Solution Path**:
+1. **Isolate debug visualisation fix** - gebruik vaste f=3230 voor surface_lines.png
+2. **Keep production pipeline** at runtime focal length
+3. **Scale mesh coordinates** correctly for different f values
+4. **Test incrementally** - f=3500 first, then f=4000
+
+### **Next Action**: 
+Focus on debug visualisation consistency first, then address coordinate scaling

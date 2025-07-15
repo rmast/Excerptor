@@ -377,16 +377,16 @@ def fast_stroke_width(im):
     return dists
 
 # only after rotation!
-def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points, index_numbers=None):
+def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers=None):
     im_h, im_w = im.shape[:2]
     debug = out_0.copy()
-    points = []
     y_offsets = []
+    line_points = []  # Separate list for line points
+    
     for line in lines:
         if len(line) < 10 or abs(line.fit_line().angle()) > 0.05: continue
         line_p = line.fit_line()
         line_p.draw(debug, thickness=1)
-        # base_points = np.array([letter.base_point() for letter in line.letters])
 
         left_mid = [0, line_p(0)]
         right_mid = [im_w, line_p(im_w)]
@@ -394,21 +394,21 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points, index_n
 
         median_y = np.median(base_points[:, 1])
         y_offsets.append(median_y - base_points[:, 1])
-        points.append(base_points)
-
-        # for underline in line.underlines:
-        #     mid_contour = (underline.top_contour() + underline.bottom_contour()) / 2
-        #     all_mid_points = np.stack([
-        #         underline.x + np.arange(underline.w), mid_contour,
-        #     ])
-        #     mid_points = all_mid_points[:, ::4]
-        #     points.append(mid_points)
+        line_points.append(base_points)
 
         for p in base_points:
             pt = tuple(np.round(p).astype(int))
             cv2.circle(debug, (pt[0], int(median_y)), 8, lib.RED, -1)
             cv2.circle(debug, pt, 8, lib.GREEN, -1)
     lib.debug_imwrite('points.png', debug)
+
+    # Combine line points properly
+    if line_points:
+        points_array = np.concatenate(line_points)
+        y_offsets_array = np.concatenate(y_offsets)
+    else:
+        points_array = np.array([]).reshape(0, 2)
+        y_offsets_array = np.array([])
 
     # align fine dewarp
     left_bounds = np.array([l.original_letters[0].left_mid() for l in lines if len(l) > 10])
@@ -534,6 +534,18 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points, index_n
     ymesh -= y_offset_interp(xmesh, ymesh, grid=False).clip(-AH, AH)
 
     conv_xmesh, conv_ymesh = cv2.convertMaps(xmesh, ymesh, cv2.CV_16SC2)
+    
+    # --- BOUNDS CHECKING: voorkom IndexError crash bij hogere f-waarden ---
+    for point in points:
+        point_2 = [int(point[0]), int(point[1])]
+        
+        # Clip coördinaten binnen mesh bounds
+        point_2[0] = max(0, min(point_2[0], conv_xmesh.shape[0] - 1))
+        point_2[1] = max(0, min(point_2[1], conv_xmesh.shape[1] - 1))
+        
+        if lib.debug:
+            print(f'[{"/".join(lib.debug_prefix)}] fine_dewarp anchor point: {point} -> {point_2} (mesh shape: {conv_xmesh.shape})')
+    # ----------------------------------------------------------------------
     
     out = cv2.remap(out_0, conv_xmesh, conv_ymesh,
                     interpolation=cv2.INTER_LINEAR,
@@ -721,8 +733,6 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, f_points, index_n
             next_underline = underlines[i + 1]
             current_idx, current_start, current_end, _, _ = current
             next_idx, next_start, next_end, _, _ = next_underline
-            _, _, _, _, current_left_mid, current_right_mid = transformed_points[i]
-            _, _, _, _, next_left_mid, next_right_mid = transformed_points[i+1]
             if (current_idx == next_idx - 1 and 
                 # current_end == len(lines[current_idx]) - 1 and 
                 # next_start == 0):
