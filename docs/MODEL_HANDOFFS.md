@@ -1,41 +1,5 @@
 # Next Steps - Prioritized Actions
 
-## Current Session (Handoff Ready)
-**Model**: GitHub Copilot (Edit Mode)
-**Task**: Parameter tuning analysis completed
-**Status**: ✅ **Ready for o3 handoff**
-
-### **HANDOFF STRATEGIEËN** (VS Code limiteert meerdere Copilot-sessies):
-
-#### **Optie 1: Browser-gebaseerd** (Aanbevolen)
-1. **Huidige VS Code**: Blijf hier voor context
-2. **GitHub.com**: Open project in browser voor o3 chat
-3. **File-based handoff**: Gebruik docs/ bestanden voor communicatie
-
-#### **Optie 2: Cursor IDE** 
-- Download Cursor IDE (heeft multi-model support)
-- Open zelfde projectmap in Cursor
-- Gebruik o3 daar terwijl VS Code open blijft
-
-#### **Optie 3: Command-line handoff**
-```bash
-# Commit huidige staat
-git commit -m "Handoff to o3: projectie-logica analysis needed"
-
-# o3 werkt met committed code
-# Resultaat wordt terug-gecommit
-```
-
-#### **Optie 4: Manual copy-paste session**
-- Kopieer relevante code naar o3 chat
-- Implementeer fixes handmatig terug in VS Code
-- Gebruik docs/ voor context-sharing
-
-### **AANBEVELING**: 
-**Optie 1 (Browser)** - Meest praktisch, geen extra software
-
-**Start o3 met**: "Analyseer projectie-logica in dewarp.py die centrum-trek veroorzaakt bij f>3230"
-
 ## Current Session (Active)
 **Model**: GitHub Copilot (Edit Mode)
 **Task**: Begin Phase 2 - Parameter Tuning
@@ -132,3 +96,39 @@ python demo.py -d -i book -vt --scantailor-split -o test_f10000 -a archive_f1000
 - `image_to_focal_plane()` transformaties  
 - `make_mesh_2d_indiv()` mesh generatie
 - Camera matrix / principal point berekeningen
+
+## GitHub Copilot (Edit Mode) → o3 (Preview) Handoff
+
+**Context**: Parameter tuning onthulde projectie-probleem, niet focal length probleem
+**Contribution**: 
+- Implementeerde alle 5 TODO points (robustness, fallbacks, scaling)
+- Voegde focal_length parameter toe aan go_dewarp() en demo.py
+- Systematisch getest f=3230,3500,4000,5000 - hogere f trekt naar centrum
+- Ontdekte dat "optimale f=3230" misleidend is - projectie-logica hardcoded
+
+**Handoff Notes**:
+- Alle TODO points voltooid, systeem stabiel
+- **Hoofdprobleem**: Projectie-algoritme niet generiek voor verschillende f-waarden
+- **Symptomen**: f>3230 veroorzaakt "centrum-trek" effect
+- **Visual evidence**: surface_lines.png toont progressieve degradatie
+
+## o3 (Preview) Instructions
+**Primary Task**: Analyseer en fix projectie-logica voor generieke focal length support
+
+**Key Focus Areas**:
+1. `project_to_image()`, `gcs_to_image()` - camera transformations
+2. `image_to_focal_plane()` - coordinate mapping
+3. `make_mesh_2d_indiv()` - mesh generation logic
+4. Principal point (O) berekeningen - mogelijk hardcoded voor f=3230
+
+**Success Criteria**:
+- f=5000 should generate proper surface_lines.png (not centrum-only)
+- Green lines should align with blue lines at higher f values
+- No "centrum-trek" effect at f>3230
+
+**Test Command**: 
+```bash
+python demo.py -d -i book -vt --scantailor-split -o test_f5000 -a archive_f5000 -n note_f5000.md -f 5000
+```
+
+**Context Files**: PROJECT_STATE.md, NEXT_STEPS.md, ITERATION_LOG.md
