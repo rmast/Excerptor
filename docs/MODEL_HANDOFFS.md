@@ -131,4 +131,44 @@ python demo.py -d -i book -vt --scantailor-split -o test_f10000 -a archive_f1000
 python demo.py -d -i book -vt --scantailor-split -o test_f5000 -a archive_f5000 -n note_f5000.md -f 5000
 ```
 
-**Context Files**: PROJECT_STATE.md, NEXT_STEPS.md, ITERATION_LOG.md
+**Context Files**: PROJECT_STATE.md, NEXT_STEPS.md, MODEL_HANDOFFS.md
+
+## GitHub.com Copilot Chat Analysis
+
+**Model**: GitHub.com Copilot (mogelijk o3 Preview)
+**Task**: Analyseer projectie-logica centrum-trek effect
+**Status**: ✅ **Excellent root cause analysis + concrete fix**
+
+### **Key Findings**:
+1. **Direct verantwoordelijk voor centrum-trek**:
+   - `project_to_image(points, O)` - formule: `projected = (points * FOCAL_PLANE_Z / points[2])[0:2]`
+   - `gcs_to_image(points, O, R)` - gebruikt project_to_image
+   - `image_to_focal_plane(points, O)` - gebruikt FOCAL_PLANE_Z
+   - `make_mesh_2d_indiv()` - mesh wordt gecomprimeerd naar centrum
+
+2. **Root Cause**: Projectie-formules schalen niet correct met verschillende f-waarden
+3. **Effect**: Hogere f → alle punten dichter bij centrum → "centrum-trek"
+
+### **Concrete Fix Procedure**:
+1. **CameraParams class** - expliciete parameters i.p.v. globale variabelen
+2. **Update project_to_image()** - gebruik camera.FOCAL_PLANE_Z/camera.O
+3. **Update gcs_to_image()** - gebruik camera.Of 
+4. **Update alle aanroepen** - geef CameraParams door
+5. **Debug visualisatie** - eigen camera config voor consistente surface_lines.png
+
+### **Implementation Strategy**:
+```python
+class CameraParams:
+    def __init__(self, f, O):
+        self.f = float(f)
+        self.O = np.asarray(O)
+        self.FOCAL_PLANE_Z = -self.f
+        self.Of = np.array([0, 0, self.f], dtype=np.float64)
+
+def project_to_image(points, camera: CameraParams):
+    projected = (points * camera.FOCAL_PLANE_Z / points[2])[0:2]
+    return (projected.T + camera.O).T
+```
+
+### **Next Action**:
+**Implementeer deze fix in VS Code** - GitHub.com Copilot heeft de perfecte oplossing gegeven!
