@@ -1425,10 +1425,15 @@ def go(argv):
         # norm = binarize.ng2014_normalize(lib.clip_u8(gray))
     cv2.imwrite('dewarped.jpg', out[0][0])
 
-def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None, flatbed=False):
+def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None, flatbed=False, focal_length=None):
     lib.debug = debug
-    if not hasattr(lib, 'debug_prefix') or not lib.debug_prefix:
-        lib.debug_prefix = ['dewarp']
+    lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
+    
+    # Experimentele focal length override
+    if focal_length is not None:
+        set_focal_length(focal_length)
+        if lib.debug: print(f'Experimental mode: f={f}, THRESHOLD_MULT={THRESHOLD_MULT}')
+    
     out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers, flatbed=flatbed)
     return out

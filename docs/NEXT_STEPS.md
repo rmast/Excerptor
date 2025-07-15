@@ -1,16 +1,21 @@
 # Next Steps - Prioritized Actions
 
-## Current Session (Completed)
-**Model**: GitHub Copilot (Edit Mode)  
-**Task**: Implement TODO Point 4 - THRESHOLD_MULT scaling
-**Status**: ✅ Completed and Verified
+## Current Session (Active)
+**Model**: GitHub Copilot (Edit Mode)
+**Task**: Begin Phase 2 - Parameter Tuning
+**Status**: 🔄 In Progress
 
-### Verification Results:
-- ✅ THRESHOLD_MULT scaling implemented and working
-- ✅ Debug output shows consistent [prefix] formatting
-- ✅ Fallback mechanisms active: `[dewarp] WARNING: Using dummy anchor points`
-- ✅ Index numbers correctly processed: 30 indexnummers, mediaan x=5681.0
-- ✅ No crashes, complete pipeline execution
+### Implementation Plan:
+1. ✅ Add focal_length parameter to go_dewarp()
+2. ✅ Create test_focal_sweep.py script
+3. ❓ Modify demo.py to accept focal_length parameter
+4. ❓ Run systematic test: f=3230,3500,4000,5000,7000,10000
+5. ❓ Visual comparison: green lines → blue lines alignment
+
+### Visual Success Criteria:
+- **surface_lines.png**: Green lines should progressively align with blue baseline
+- **all_lines.png**: Blue lines = ground truth text detection
+- **Goal**: Find optimal f where green ≈ blue (best dewarp quality)
 
 ## **ALL TODO POINTS COMPLETED** 🎉
 
