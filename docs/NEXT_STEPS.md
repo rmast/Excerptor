@@ -3,10 +3,12 @@
 ## Current Session (Completed)
 **Model**: GitHub Copilot (Edit Mode)
 **Task**: Implement TODO Point 1 - Robustness in make_mesh_2d_indiv
-**Status**: ✅ Completed
+**Status**: ✅ Completed and Verified
 
 ## Immediate (Next Model)
-1. **Implement TODO Point 2**: Anchor-point fallback for fine_dewarp
+1. **Implement TODO Point 2**: Anchor-point fallback in correct_geometry()
+   - Add dummy anchor points when f_points is empty
+   - Ensure np.concatenate() never fails in fine_dewarp
 2. **Implement TODO Point 3**: Graceful fine_dewarp degradation
 3. **Implement TODO Point 4**: THRESHOLD_MULT scaling
 4. **Implement TODO Point 5**: Debug pipeline consistency
