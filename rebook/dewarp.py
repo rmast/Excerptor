@@ -179,6 +179,19 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
             min_index = np.unravel_index(np.argmin(distances), distances.shape)
             points.append([min_index[1], min_index[0]])
 
+    # --- ANCHOR FALLBACK: voorkom lege points array voor fine_dewarp -------
+    if not points:
+        # Voeg twee dummy-punten toe op ¼ en ¾ breedte, midden hoogte
+        vi_center = xmesh.shape[0] // 2
+        ui_left   = xmesh.shape[1] // 4
+        ui_right  = 3 * xmesh.shape[1] // 4
+        points = [
+            [vi_center, ui_left],
+            [vi_center, ui_right],
+        ]
+        if lib.debug: print('WARNING: Using dummy anchor points for fine_dewarp')
+    # -----------------------------------------------------------------------
+
     im = binarize.binarize(out_0, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
     AH, lines, underlines, all_letters = get_AH_lines_fine(im)
     out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers)
