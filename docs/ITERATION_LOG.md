@@ -30,4 +30,29 @@
 - **Visual**: No crashes, anchor fallback active, should show WARNING if used
 - **Next**: Implement TODO Point 3 (Graceful fine_dewarp degradation)
 
+## Iteration 3 (Completed)
+- **Model**: GitHub Copilot (Edit Mode)
+- **Changes**:
+  - ✅ TODO Point 3: Graceful degradation in `fine_dewarp()`
+  - Implemented checks for empty or single-point f_points
+  - Bypasses fine_dewarp if insufficient points, avoiding crashes
+  - ⚠️ Minor logical error in point check manually fixed by user
+- **Status**: ✅ Working after manual fix
+- **Test**: `python demo.py -d -i book -vt --scantailor-split -o test_output -a test_archive -n test_note.md`
+- **Visual**: No crashes on degenerate cases, warnings shown
+- **Next**: Implement TODO Point 4 (THRESHOLD_MULT scaling)
+
+## Iteration 4 (Completed)
+- **Model**: GitHub Copilot (Edit Mode)
+- **Changes**:
+  - ✅ TODO Point 4: THRESHOLD_MULT scaling implemented
+  - Added global THRESHOLD_MULT variable with scaling logic
+  - Created set_focal_length() function (f=10000 → THRESHOLD_MULT=1.5)
+  - Applied THRESHOLD_MULT to RANSAC calls in side_lines() and remove_outliers()
+  - Integrated with flatbed mode in kim2014()
+- **Status**: ✅ Working - improved filtering and margins
+- **Test**: Boxes follow filtering correctly, left margin improved
+- **Visual**: Text bottom-left no longer cut off
+- **Next**: Implement TODO Point 5 (Debug pipeline consistency)
+
 ## Template for Future Iterations
