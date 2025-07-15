@@ -18,4 +18,16 @@
 - **Visual**: No crashes, robustness patches active, should show WARNING if fallback used
 - **Next**: Implement TODO Point 2 (Anchor-point fallback)
 
+## Iteration 2 (Completed)
+- **Model**: GitHub Copilot (Edit Mode) 
+- **Changes**:
+  - ✅ TODO Point 2: Anchor-point fallback in `correct_geometry()`
+  - Added dummy anchor points when f_points is empty
+  - Ensures np.concatenate() never fails in fine_dewarp
+  - ⚠️ Minor syntax error (identifier typo) manually fixed by user
+- **Status**: ✅ Working after manual fix
+- **Test**: `python demo.py -d -i book -vt --scantailor-split -o test_output -a test_archive -n test_note.md`
+- **Visual**: No crashes, anchor fallback active, should show WARNING if used
+- **Next**: Implement TODO Point 3 (Graceful fine_dewarp degradation)
+
 ## Template for Future Iterations

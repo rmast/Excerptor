@@ -1,19 +1,16 @@
 # Next Steps - Prioritized Actions
 
-## Current Session (Active)
+## Current Session (Completed)
 **Model**: GitHub Copilot (Edit Mode)
 **Task**: Implement TODO Point 2 - Anchor-point fallback in correct_geometry()
-**Status**: 🔄 In Progress
-
-### Implementation Plan:
-1. ✅ Add dummy anchor points when f_points is empty
-2. Test with working command
-3. Next: TODO Point 3 - Graceful fine_dewarp degradation
+**Status**: ✅ Completed (with manual syntax fix)
 
 ## Immediate (Next Model)
-2. **Implement TODO Point 3**: Graceful fine_dewarp degradation
-3. **Implement TODO Point 4**: THRESHOLD_MULT scaling
-4. **Implement TODO Point 5**: Debug pipeline consistency
+1. **Implement TODO Point 3**: Graceful fine_dewarp degradation
+   - Wrap fine_dewarp call in try/except
+   - Return coarse remap (out_0) on ValueError
+2. **Implement TODO Point 4**: THRESHOLD_MULT scaling
+3. **Implement TODO Point 5**: Debug pipeline consistency
 
 ## Parameter Tuning Schedule
 - **Phase 1**: Stabilize at f=3230 (current) ← **COMPLETED**
@@ -28,5 +25,8 @@
 
 ## Session Notes
 - Function signature mismatch was root cause of initial failure
+- TODO Point 1 & 2 successfully implemented with robustness checks
+- Note: AI generated syntax error fixed manually by user
+- Ready for next model to implement TODO Point 3 or parameter tuning
 - TODO Point 1 successfully implemented with robustness checks
 - Ready for next model to implement TODO Point 2 or parameter tuning
