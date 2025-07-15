@@ -174,7 +174,8 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
                         debug=debug,
                         f_points=page_points,
                         split=split_pages,
-                        index_numbers=index_numbers  # Geef indexnummers door
+                        index_numbers=index_numbers,  # Geef indexnummers door
+                        focal_length=args_dict.get('focal_length')  # Experimentele focal length
                     )
                     dewarped_img: np.ndarray = img_dewarped[0][0]
                     dewarped_img = resize_to_match_aspect(dewarped_img, input_shape)
@@ -487,6 +488,13 @@ if __name__ == '__main__':
         action='store_true',
         help='Save visualization of detected textlines on original image.',
     )
+    parser.add_argument(
+        '-f',
+        '--focal_length',
+        type=int,
+        default=None,
+        help='Experimental focal length override (default: 3230 for mobile, 10000 for flatbed).',
+    )
     args = parser.parse_args()
     debug: bool = args.debug
     model_seg: str = args.model_seg
@@ -515,6 +523,7 @@ if __name__ == '__main__':
         'note_name': note_name,
         'scantailor_split': scantailor_split,
         'split_pages': args.split_pages,
+        'focal_length': args.focal_length,
     }
     image_paths = glob.glob(os.path.join(input_folder, '*.jpg'))
     image_paths += glob.glob(os.path.join(input_folder, '*.jpeg'))
