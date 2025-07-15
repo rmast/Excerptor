@@ -194,10 +194,21 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
 
     im = binarize.binarize(out_0, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
     AH, lines, underlines, all_letters = get_AH_lines_fine(im)
-    out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers)
+    
+    # --- GRACEFUL DEGRADE: fallback bij fine_dewarp failure ---------------
+    try:
+        out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers)
+    except ValueError as e:
+        # fine_dewarp faalt wanneer er 0 punten zijn; val terug op coarse remap
+        if 'need at least one array to concatenate' in str(e):
+            if lib.debug:
+                print('[fallback] fine_dewarp failed: returning coarse remap')
+            out = (out_0,)   # verwacht tuple-achtige return
+        else:
+            raise
+    # -----------------------------------------------------------------------
     
     lib.debug_imwrite('corrected.png', out[0])
-
     return out
 
 def get_AH_lines(im):
