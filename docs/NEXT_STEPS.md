@@ -38,8 +38,26 @@ git commit -m "Handoff to o3: projectie-logica analysis needed"
 
 ## Current Session (Active)
 **Model**: GitHub Copilot (Edit Mode)
-**Task**: Begin Phase 2 - Parameter Tuning
-**Status**: 🔄 In Progress
+**Task**: Implement CameraParams fix for centrum-trek effect
+**Status**: 🔄 **Implementing GitHub.com Copilot's solution**
+
+### Implementation Progress:
+1. ✅ **CameraParams class** - Added with f, O, FOCAL_PLANE_Z, Of
+2. ✅ **Updated project_to_image()** - Support both CameraParams and legacy O
+3. ✅ **Updated gcs_to_image()** - Support both CameraParams and legacy O  
+4. ✅ **Updated image_to_focal_plane()** - Optional f parameter
+5. ✅ **Updated make_mesh_2d_indiv()** - Uses CameraParams for consistent projection
+6. ❓ **Test centrum-trek fix** - Ready for testing
+
+### **Test Command**:
+```bash
+python demo.py -d -i book -vt --scantailor-split -o test_f5000_fixed -a archive_f5000_fixed -n note_f5000_fixed.md -f 5000
+```
+
+### **Expected Result**:
+- f=5000 should generate proper surface_lines.png (not centrum-only)
+- Green lines should align with blue lines
+- No "centrum-trek" effect
 
 ### Implementation Plan:
 1. ✅ Add focal_length parameter to go_dewarp()

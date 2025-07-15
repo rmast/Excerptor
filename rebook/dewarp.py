@@ -24,14 +24,23 @@ Samsung S22U, 3230
 48M Cam, 3278
 """
 f = 3230
+THRESHOLD_MULT = 1.0
+
+# Camera parameter object - fix voor centrum-trek effect
+class CameraParams:
+    def __init__(self, f, O):
+        self.f = float(f)
+        self.O = np.asarray(O)
+        self.FOCAL_PLANE_Z = -self.f
+        self.Of = np.array([0, 0, self.f], dtype=np.float64)
+
+# Backward compatibility global variabelen
 Of = np.array([0, 0, f], dtype=np.float64)
-THRESHOLD_MULT = 1.0                        # 1 → standaard, >1 → ruimer filteren
 
 def set_focal_length(new_f):
     """Update global focal length + afgeleide constanten."""
-    global f, FOCAL_PLANE_Z, Of, THRESHOLD_MULT
+    global f, Of, THRESHOLD_MULT
     f = float(new_f)
-    FOCAL_PLANE_Z = -f
     Of = np.array([0, 0, f], dtype=np.float64)
     # Verhoog THRESHOLD_MULT voor flatbed (hogere f)
     THRESHOLD_MULT = 1.0 if f <= 3500 else 1.5
@@ -295,7 +304,12 @@ def R_theta(theta):
     ])
 
 FOCAL_PLANE_Z = -f
-def image_to_focal_plane(points, O):
+def image_to_focal_plane(points, O, f=None):
+    """Convert 2D image points to focal plane coordinates."""
+    if f is None:
+        f = globals()['f']  # Use global f if not specified
+    FOCAL_PLANE_Z = -f
+    
     if type(points) != np.ndarray:
         points = np.array(points)
 
@@ -306,19 +320,37 @@ def image_to_focal_plane(points, O):
     )).astype(np.float64)
 
 # points: 3 x ... array of points
-def project_to_image(points, O):
+def project_to_image(points, camera):
+    """Project 3D points to 2D image using camera parameters."""
+    if hasattr(camera, 'FOCAL_PLANE_Z'):
+        # New CameraParams object
+        FOCAL_PLANE_Z = camera.FOCAL_PLANE_Z
+        O = camera.O
+    else:
+        # Legacy: camera is actually O, use global f
+        O = camera
+        FOCAL_PLANE_Z = -globals()['f']
+        
     assert points.shape[0] == 3
     projected = (points * FOCAL_PLANE_Z / points[2])[0:2]
     return (projected.T + O).T
 
 # points: 3 x ... array of points
-def gcs_to_image(points, O, R):
+def gcs_to_image(points, camera, R):
+    """Transform GCS points to image using camera parameters."""
+    if hasattr(camera, 'Of'):
+        # New CameraParams object
+        Of = camera.Of
+    else:
+        # Legacy: camera is actually O, use global Of
+        Of = globals()['Of']
+        
     # invert R(pt - Of)
     assert points.shape[0] == 3
     image_coords = np.tensordot(inv(R), points, axes=1)
     image_coords_T = image_coords.T
     image_coords_T += Of
-    return project_to_image(image_coords, O)
+    return project_to_image(image_coords, camera)
 
 # O: two-dimensional origin (middle of image/principal point)
 # returns points on focal plane
@@ -331,7 +363,7 @@ def line_base_points_modeled(line, O):
     return image_to_focal_plane(points, O)
 
 def line_base_points(line, O):
-    return image_to_focal_plane(line.base_points().T, O)
+    return image_to_focal_plane(line.base_points().T, O, f=globals()['f'])
 
 # represents g(x) = 1/w h(wx)
 class NormPoly(object):
@@ -1035,7 +1067,10 @@ def make_mesh_2d_indiv(all_lines, corners_XYZ, O, R, g, n_points_w=None):
 
     mesh_XYZ_y = np.linspace(box_XYZ.y0, box_XYZ.y1, n_points_h)
     mesh_XYZ = make_mesh_XYZ(mesh_XYZ_x_arc, mesh_XYZ_y, g)
-    mesh_2d = gcs_to_image(mesh_XYZ, O, R)
+    # Gebruik CameraParams voor consistente projectie
+    camera = CameraParams(globals()['f'], O)
+    mesh_2d = gcs_to_image(mesh_XYZ, camera, R)
+    
     if lib.debug: print('mesh:', Crop.from_points(mesh_2d))
 
     # make sure meshes are not reversed

@@ -55,4 +55,17 @@
 - **Visual**: Text bottom-left no longer cut off
 - **Next**: Implement TODO Point 5 (Debug pipeline consistency)
 
+## Iteration 5 (Partial Fix)
+- **Model**: GitHub Copilot (Edit Mode) + GitHub.com Copilot Chat
+- **Changes**:
+  - ✅ Implementeerde CameraParams class (f, O, FOCAL_PLANE_Z, Of)
+  - ✅ Updated project_to_image() - backward compatible
+  - ✅ Updated gcs_to_image() - backward compatible  
+  - ✅ Updated image_to_focal_plane() - optional f parameter
+  - ✅ Updated make_mesh_2d_indiv() - uses CameraParams
+- **Status**: ⚠️ **Partial fix** - centrum-trek verminderd maar niet opgelost
+- **Test**: f=5000 - groene lijnen nog steeds verkleind, nieuwe kromming rechts
+- **Root Cause**: Niet alle projectie-aanroepen gebruiken CameraParams
+- **Next**: Systematisch alle gcs_to_image/project_to_image aanroepen updaten
+
 ## Template for Future Iterations

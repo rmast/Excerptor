@@ -172,3 +172,32 @@ def project_to_image(points, camera: CameraParams):
 
 ### **Next Action**:
 **Implementeer deze fix in VS Code** - GitHub.com Copilot heeft de perfecte oplossing gegeven!
+
+### **CameraParams Fix Test Results**:
+- **f=5000**: ❌ **Partial fix** - groene lijnen nog steeds verkleind over midden
+- **New issue**: Gekke kromming rechts - inconsistent parameter gebruik
+- **Root cause**: Niet alle projectie-aanroepen gebruiken CameraParams
+
+### **Diepere Analyse Nodig**:
+1. **Meer aanroepen vinden** die nog legacy projectie gebruiken
+2. **Debug pipeline** - surface_lines.png gebruikt mogelijk nog globale f
+3. **Visualization functies** - debug_images() waarschijnlijk nog niet geüpdatet
+4. **Mesh-generatie** - andere plekken dan make_mesh_2d_indiv
+
+### **Volgende Stappen**:
+1. **Zoek alle gcs_to_image() aanroepen** - update naar CameraParams
+2. **Zoek alle project_to_image() aanroepen** - update naar CameraParams  
+3. **Debug visualization** - Kim2014.debug_images() functie
+4. **Mesh pipeline** - make_mesh_2d() functie
+5. **Line processing** - line_base_points_modeled()
+
+### **Systematic Fix Needed**:
+```bash
+# Zoek alle aanroepen die gefixed moeten worden
+grep -n "gcs_to_image\|project_to_image" rebook/dewarp.py
+```
+
+### **Critical Functions Still Using Legacy**:
+- `Kim2014.debug_images()` - tekent groene lijnen (surface_lines.png)
+- `make_mesh_2d()` - roept make_mesh_2d_indiv aan
+- `line_base_points_modeled()` - mogelijk nog niet geüpdatet
