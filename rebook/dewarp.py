@@ -199,7 +199,8 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
             [vi_center, ui_left],
             [vi_center, ui_right],
         ]
-        if lib.debug: print('WARNING: Using dummy anchor points for fine_dewarp')
+        if lib.debug: 
+            print('[{}] WARNING: Using dummy anchor points for fine_dewarp'.format('/'.join(lib.debug_prefix)))
     # -----------------------------------------------------------------------
 
     im = binarize.binarize(out_0, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
@@ -209,11 +210,10 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
     try:
         out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers)
     except ValueError as e:
-        # fine_dewarp faalt wanneer er 0 punten zijn; val terug op coarse remap
         if 'need at least one array to concatenate' in str(e):
             if lib.debug:
-                print('[fallback] fine_dewarp failed: returning coarse remap')
-            out = (out_0,)   # verwacht tuple-achtige return
+                print('[{}] fine_dewarp failed: returning coarse remap'.format('/'.join(lib.debug_prefix)))
+            out = (out_0,)
         else:
             raise
     # -----------------------------------------------------------------------
@@ -1024,9 +1024,8 @@ def make_mesh_2d_indiv(all_lines, corners_XYZ, O, R, g, n_points_w=None):
 
     # --- ROBUSTNESS: voorkom deling door nul of ∞ -------------------------
     if not np.isfinite(total_arc) or total_arc <= 1e-6:
-        # fallback: gebruik horizontale box-breedte als benadering
         total_arc = max(abs(box_XYZ.w), 1.0)
-        if lib.debug: print('WARNING: total_arc fallback used, value:', total_arc)
+        if lib.debug: print('[{}] WARNING: total_arc fallback used, value: {}'.format('/'.join(lib.debug_prefix), total_arc))
     # -----------------------------------------------------------------------
 
     # TODO: think more about estimation of aspect ratio for mesh
@@ -1121,7 +1120,7 @@ def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[], index_number
     # Flatbed-modus: vrijwel orthografisch → grote f + agressiever filter
     if flatbed:
         set_focal_length(10000)  # ≈ orthografische projectie + THRESHOLD_MULT scaling
-        if lib.debug: print(f'Flatbed mode: f={f}, THRESHOLD_MULT={THRESHOLD_MULT}')
+        if lib.debug: print('[{}] Flatbed mode: f={}, THRESHOLD_MULT={}'.format('/'.join(lib.debug_prefix), f, THRESHOLD_MULT))
 
     lib.debug_imwrite('gray.png', binarize.grayscale(orig))
     im = binarize.binarize(orig, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
@@ -1428,7 +1427,8 @@ def go(argv):
 
 def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None, flatbed=False):
     lib.debug = debug
-    lib.debug_prefix = ['dewarp']
+    if not hasattr(lib, 'debug_prefix') or not lib.debug_prefix:
+        lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
     out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers, flatbed=flatbed)
     return out
