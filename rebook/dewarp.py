@@ -25,6 +25,16 @@ Samsung S22U, 3230
 """
 f = 3230
 Of = np.array([0, 0, f], dtype=np.float64)
+THRESHOLD_MULT = 1.0                        # 1 → standaard, >1 → ruimer filteren
+
+def set_focal_length(new_f):
+    """Update global focal length + afgeleide constanten."""
+    global f, FOCAL_PLANE_Z, Of, THRESHOLD_MULT
+    f = float(new_f)
+    FOCAL_PLANE_Z = -f
+    Of = np.array([0, 0, f], dtype=np.float64)
+    # Verhoog THRESHOLD_MULT voor flatbed (hogere f)
+    THRESHOLD_MULT = 1.0 if f <= 3500 else 1.5
 
 def compress(l, flags):
     return list(itertools.compress(l, flags))
@@ -75,7 +85,7 @@ def side_lines(AH, lines, index_numbers=None):
     vertical_lines = []
     debug = cv2.cvtColor(bw, cv2.COLOR_GRAY2BGR)
     for coords in [left_bounds, right_bounds]:
-        model, inliers = ransac(coords, LinearXModel, 3, AH / 10.0)
+        model, inliers = ransac(coords, LinearXModel, 3, AH / 10.0 * THRESHOLD_MULT)
         vertical_lines.append(model.params)
         for p, inlier in zip(coords, inliers):
             draw_circle(debug, p, 4, color=GREEN if inlier else RED)
@@ -145,7 +155,7 @@ def remove_outliers(im, AH, lines, line_len):
 
         points = np.array([letter.base_point() for letter in l])
         min_samples = points.shape[0]//2+1
-        model, inliers = ransac(data=points, model_class=PolyModel5, min_samples=min_samples, residual_threshold=AH / 10.0)
+        model, inliers = ransac(data=points, model_class=PolyModel5, min_samples=min_samples, residual_threshold=AH / 10.0 * THRESHOLD_MULT)
         poly = model.params
         l.model = poly
         # trace_baseline(debug, l, BLUE)
@@ -1110,9 +1120,8 @@ def lsq(func, jac, x_scale):
 def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[], index_numbers=None, flatbed=False):
     # Flatbed-modus: vrijwel orthografisch → grote f + agressiever filter
     if flatbed:
-        global f
-        f = 10000  # ≈ orthografische projectie
-        # TODO: implement THRESHOLD_MULT scaling here
+        set_focal_length(10000)  # ≈ orthografische projectie + THRESHOLD_MULT scaling
+        if lib.debug: print(f'Flatbed mode: f={f}, THRESHOLD_MULT={THRESHOLD_MULT}')
 
     lib.debug_imwrite('gray.png', binarize.grayscale(orig))
     im = binarize.binarize(orig, algorithm=lambda im: binarize.sauvola_noisy(im, k=0.1))
