@@ -1329,7 +1329,7 @@ class Kim2014(object):
         # Scaling correction voor debug visualisatie
         current_f = globals()['f']
         baseline_f = 3230.0
-        scale_factor = baseline_f / current_f  # Voor f=3500: 3230/3500 ≈ 0.923
+        scale_factor = current_f / baseline_f  # Voor f=3500: 3500/3230 ≈ 1.084 (GROTER)
         
         if lib.debug:
             print(f'[debug_images] f={current_f}, scale_factor={scale_factor:.3f}')
