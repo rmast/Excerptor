@@ -301,3 +301,57 @@ python demo.py -d -i book -vt --scantailor-split -o test_f5000_bounds_fixed -a a
 
 ### **Next Action**: 
 Focus on debug visualisation consistency first, then address coordinate scaling
+
+### **Herziene Planning: Schaalprobleem Aanpak**
+
+## **Hypothese Validatie**:
+✅ **Niet fundamentele incompatibiliteit** - schaalprobleem
+✅ **o3 originele observatie**: "groene lijnen 3x te klein door focal length wijziging"
+✅ **GitHub.com Copilot**: "projectie-formules schalen niet correct"
+
+## **Revised Strategy - Incrementele Aanpak**:
+
+### **Phase 1: Isolatie Test** (huidige branch)
+1. **Test debug visualisatie fix** - vaste f=3230 voor surface_lines.png
+2. **Behoud production pipeline** - gebruik runtime focal length
+3. **Verify scaling independence** - debug vs. production gescheiden
+
+### **Phase 2: Coordinate Scaling Fix** (nieuwe branch)
+1. **Creëer branch**: `feature/focal-length-scaling`
+2. **Implementeer schaal-correctie** in projectie-functies
+3. **Test f=3500 incrementeel** - kleinere stap dan f=5000
+4. **Valideer mesh coordinate scaling**
+
+### **Phase 3: Parameter Space Expansion** 
+1. **Test f=4000** na f=3500 success
+2. **Approach f=10000** geleidelijk
+3. **Validate flatbed emulation** capability
+
+## **Branch Strategy**:
+```bash
+# Huidige branch - debug visualisatie fix
+git branch  # check current branch
+git commit -m "Debug visualisation isolation fix"
+
+# Nieuwe branch voor scaling fix
+git checkout -b feature/focal-length-scaling
+git push -u origin feature/focal-length-scaling
+```
+
+## **Test Protocol**:
+1. **Start met f=3500** (smaller step)
+2. **Focus op surface_lines.png** - should not be verkleind
+3. **Measure scaling factor** - hoe veel kleiner zijn groene lijnen?
+4. **Apply inverse scaling** in coordinate transformation
+
+## **Success Criteria Revised**:
+- **f=3500**: Groene lijnen zelfde grootte als f=3230
+- **f=4000**: Consistent scaling, no crashes
+- **f=5000**: Full functionality without IndexError
+- **f=10000**: Flatbed emulation working
+
+## **Next Actions**:
+1. **Commit current state** 
+2. **Test debug visualisatie fix** first
+3. **Create scaling branch** als debug fix werkt
+4. **Implement coordinate scaling** correction
