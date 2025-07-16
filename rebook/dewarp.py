@@ -217,7 +217,7 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
     
     # --- GRACEFUL DEGRADE: fallback bij fine_dewarp failure ---------------
     try:
-        out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers)
+        out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers, f_points)
     except ValueError as e:
         if 'need at least one array to concatenate' in str(e):
             if lib.debug:
@@ -1326,24 +1326,32 @@ class Kim2014(object):
         debug = cv2.cvtColor(self.im, cv2.COLOR_GRAY2BGR)
         ts_surface = E_str_project(R, g, self.base_points, 0)
 
-        # Gebruik vaste f=3230 voor consistente debug visualisatie
-        debug_camera = CameraParams(3230, self.O)
+        # Scaling correction voor debug visualisatie
+        current_f = globals()['f']
+        baseline_f = 3230.0
+        scale_factor = baseline_f / current_f  # Voor f=3500: 3230/3500 ≈ 0.923
+        
+        if lib.debug:
+            print(f'[debug_images] f={current_f}, scale_factor={scale_factor:.3f}')
 
         for Y, (_, points_XYZ) in zip(l_m, ts_surface):
             Xs, Ys, _ = points_XYZ
-            # print('Y diffs:', Ys - Y)
             X_min, X_max = Xs.min(), Xs.max()
             line_Xs = np.linspace(X_min, X_max, 100)
             line_Ys = np.full((100,), Y)
             line_Zs = g(line_Xs)
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
             
-            # Projectie met debug camera (vaste f=3230)
-            image_coords = np.tensordot(inv(R), line_XYZ, axes=1)
-            image_coords_T = image_coords.T
-            image_coords_T += debug_camera.Of
-            projected = (image_coords * debug_camera.FOCAL_PLANE_Z / image_coords[2])[0:2]
-            line_2d = (projected.T + debug_camera.O).T.T
+            # Projectie met originele f voor correcte berekening
+            line_2d = gcs_to_image(line_XYZ, self.O, R).T
+            
+            # Scaling correction - schaal groene lijnen terug naar baseline grootte
+            if current_f != baseline_f:
+                # Bereken centrum van de image (niet van de lijn)
+                image_center = np.array([self.im.shape[1] / 2, self.im.shape[0] / 2])
+                # Schaal beide x en y coördinaten rond het image centrum
+                line_2d_scaled = image_center + (line_2d - image_center) * scale_factor
+                line_2d = line_2d_scaled
             
             for p0, p1 in zip(line_2d, line_2d[1:]):
                 draw_line(debug, p0, p1, GREEN, 4)
@@ -1354,12 +1362,13 @@ class Kim2014(object):
             line_Zs = g(line_Xs)
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
             
-            # Projectie met debug camera (vaste f=3230)
-            image_coords = np.tensordot(inv(R), line_XYZ, axes=1)
-            image_coords_T = image_coords.T
-            image_coords_T += debug_camera.Of
-            projected = (image_coords * debug_camera.FOCAL_PLANE_Z / image_coords[2])[0:2]
-            line_2d = (projected.T + debug_camera.O).T.T
+            line_2d = gcs_to_image(line_XYZ, self.O, R).T
+            
+            # Scaling correction voor split lines
+            if current_f != baseline_f:
+                image_center = np.array([self.im.shape[1] / 2, self.im.shape[0] / 2])
+                line_2d_scaled = image_center + (line_2d - image_center) * scale_factor
+                line_2d = line_2d_scaled
             
             for p0, p1 in zip(line_2d, line_2d[1:]):
                 draw_line(debug, p0, p1, RED, 4)
@@ -1370,12 +1379,13 @@ class Kim2014(object):
             line_Zs = g(line_Xs)
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
             
-            # Projectie met debug camera (vaste f=3230)
-            image_coords = np.tensordot(inv(R), line_XYZ, axes=1)
-            image_coords_T = image_coords.T
-            image_coords_T += debug_camera.Of
-            projected = (image_coords * debug_camera.FOCAL_PLANE_Z / image_coords[2])[0:2]
-            line_2d = (projected.T + debug_camera.O).T.T
+            line_2d = gcs_to_image(line_XYZ, self.O, R).T
+            
+            # Scaling correction voor align lines
+            if current_f != baseline_f:
+                image_center = np.array([self.im.shape[1] / 2, self.im.shape[0] / 2])
+                line_2d_scaled = image_center + (line_2d - image_center) * scale_factor
+                line_2d = line_2d_scaled
             
             draw_line(debug, line_2d[0], line_2d[1], BLUE, 4)
 

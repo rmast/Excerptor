@@ -377,7 +377,7 @@ def fast_stroke_width(im):
     return dists
 
 # only after rotation!
-def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers=None):
+def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers=None, f_points=None):
     im_h, im_w = im.shape[:2]
     debug = out_0.copy()
     y_offsets = []
@@ -404,11 +404,11 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_num
 
     # Combine line points properly
     if line_points:
-        points_array = np.concatenate(line_points)
-        y_offsets_array = np.concatenate(y_offsets)
+        points_combined = np.concatenate(line_points)
+        y_offsets_combined = np.concatenate(y_offsets)
     else:
-        points_array = np.array([]).reshape(0, 2)
-        y_offsets_array = np.array([])
+        points_combined = np.array([]).reshape(0, 2)
+        y_offsets_combined = np.array([])
 
     # align fine dewarp
     left_bounds = np.array([l.original_letters[0].left_mid() for l in lines if len(l) > 10])
@@ -528,8 +528,8 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_num
     # ymesh -= y_offset_interp
     
     y_offset_interp = interpolate.SmoothBivariateSpline(
-        points[:, 0], points[:, 1], y_offsets.clip(-AH, AH),
-        s=4 * points.shape[0]
+        points_combined[:, 0], points_combined[:, 1], y_offsets_combined.clip(-AH, AH),
+        s=4 * points_combined.shape[0]
     )
     ymesh -= y_offset_interp(xmesh, ymesh, grid=False).clip(-AH, AH)
 
@@ -537,6 +537,18 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_num
     
     # --- BOUNDS CHECKING: voorkom IndexError crash bij hogere f-waarden ---
     for point in points:
+        # Check if point is scalar or array
+        if np.isscalar(point):
+            if lib.debug:
+                print(f'[{"/".join(lib.debug_prefix)}] fine_dewarp: skipping scalar point {point}')
+            continue
+            
+        # Ensure point is at least 2D
+        if len(point) < 2:
+            if lib.debug:
+                print(f'[{"/".join(lib.debug_prefix)}] fine_dewarp: skipping 1D point {point}')
+            continue
+            
         point_2 = [int(point[0]), int(point[1])]
         
         # Clip coördinaten binnen mesh bounds
@@ -687,7 +699,6 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_num
             bounding_boxes_with_flags_array = np.array(bounding_boxes)
             # bounding_boxes_with_flags_array[:, [0, 2]] = np.clip(bounding_boxes_with_flags_array[:, [0, 2]], 0, dst.shape[1])
             # bounding_boxes_with_flags_array[:, [1, 3]] = np.clip(bounding_boxes_with_flags_array[:, [1, 3]], 0, dst.shape[0])
-
     if underlines:
         all_points = []
         for underline in underlines:
@@ -834,4 +845,5 @@ def filter_spacing_deviation(im, AH, lines):
 
     lib.debug_imwrite("spacing_filter.png", debug)
 
+    return new_lines
     return new_lines
