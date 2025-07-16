@@ -177,6 +177,14 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
                         index_numbers=index_numbers,  # Geef indexnummers door
                         focal_length=args_dict.get('focal_length')  # Experimentele focal length
                     )
+                    # Handle graceful degradation
+                    if len(img_dewarped) > 0 and len(img_dewarped[0]) > 1:
+                        boxes = img_dewarped[0][1]
+                    else:
+                        boxes = None
+                        if debug:
+                            print("Warning: No bounding boxes generated (graceful degradation)")
+                    
                     dewarped_img: np.ndarray = img_dewarped[0][0]
                     dewarped_img = resize_to_match_aspect(dewarped_img, input_shape)
                     img_dewarped_ill: np.ndarray = ill_correct(dewarped_img)
@@ -184,7 +192,6 @@ def process_image(image_path: str, args_dict: dict) -> tuple[str, list[str]]:
                     cropped_pic_filename: str = f"{base}_{side}_dewarped_pic{ext}"
                     cv2.imwrite(os.path.join(archive_folder, original_filename), frame)
                     cv2.imwrite(os.path.join(output_folder, dewarped_filename), img_dewarped_ill)
-                    boxes = img_dewarped[0][1]
                     
                     # Visualiseer textlines op originele afbeelding
                     if visualize_textlines and boxes is not None:

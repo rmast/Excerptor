@@ -107,3 +107,24 @@ python demo.py -d -i book -vt --scantailor-split -o test_f3500_scaled_fixed -f 3
 ```bash
 python demo.py -d -i book -vt --scantailor-split -o test_f3500_v2 -f 3500
 ```
+
+# Scaling Results Summary
+
+## ✅ **Success Range**: f=3230 - f=6000
+- **Consistent scaling**: Groene lijnen correct geschaald
+- **Visual alignment**: Lijnen projecteren op consistente afstand van tekst
+- **No crashes**: Graceful degradation implemented
+
+## ⚠️ **Boundary Effects**: f=7500+
+- **Vertical distortion**: Rare dingen in verticale richting
+- **f=10000**: IndexError → graceful degradation
+
+## 🎯 **Next Steps**:
+1. **Alignment improvement**: Groene → blauwe lijnen matching
+2. **Production scaling**: Apply to final dewarped.tif
+3. **Algorithm limits**: f=6000 practical maximum
+
+## **Recommendation**:
+- **f=3230-4000**: Optimal range
+- **f=5000-6000**: Usable with monitoring
+- **f=7500+**: Avoid - algorithm breakdown

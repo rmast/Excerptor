@@ -222,7 +222,7 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
         if 'need at least one array to concatenate' in str(e):
             if lib.debug:
                 print('[{}] fine_dewarp failed: returning coarse remap'.format('/'.join(lib.debug_prefix)))
-            out = (out_0,)
+            out = (out_0, None)  # Consistent tuple format
         else:
             raise
     # -----------------------------------------------------------------------
