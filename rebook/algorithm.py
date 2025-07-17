@@ -579,8 +579,18 @@ def fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_num
                     interpolation=cv2.INTER_LINEAR,
                     borderValue=(0,0,0)).T
     
-    out = np.transpose(out, (1, 2, 0))
-
+    # Fix transpose operation - handle both 2D and 3D arrays
+    if len(out.shape) == 3:
+        # Color image: (height, width, channels) -> (width, height, channels)
+        out = np.transpose(out, (1, 2, 0))
+    elif len(out.shape) == 2:
+        # Grayscale image: (height, width) -> (width, height)
+        out = np.transpose(out, (1, 0))
+    else:
+        # Unknown format, leave as-is
+        if lib.debug:
+            print(f'[fine_dewarp] WARNING: Unexpected array shape {out.shape}, skipping transpose')
+    
     # debug = cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
     # for line in lines:
     #     base_points = np.array([letter.base_point() for letter in line.letters[1:-1]])

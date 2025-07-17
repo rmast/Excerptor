@@ -218,10 +218,10 @@ def correct_geometry(orig, mesh, interpolation=cv2.INTER_LINEAR, f_points=[], in
     # --- GRACEFUL DEGRADE: fallback bij fine_dewarp failure ---------------
     try:
         out = algorithm.fine_dewarp(out_0, im, AH, lines, underlines, all_letters, points, index_numbers, f_points)
-    except ValueError as e:
-        if 'need at least one array to concatenate' in str(e):
+    except (ValueError, IndexError) as e:
+        if 'axes don\'t match array' in str(e) or 'need at least one array to concatenate' in str(e):
             if lib.debug:
-                print('[{}] fine_dewarp failed: returning coarse remap'.format('/'.join(lib.debug_prefix)))
+                print('[{}] fine_dewarp failed ({}): returning coarse remap'.format('/'.join(lib.debug_prefix), str(e)))
             out = (out_0, None)  # Consistent tuple format
         else:
             raise
@@ -1262,7 +1262,7 @@ def kim2014(orig, O=None, split=True, n_points_w=None, f_points=[], index_number
         lib.debug_prefix.pop()
         return dewarper.run_retry()
 
-class Kim2014(object):
+class Kim2014:
     def __init__(self, orig, im, lines, pages, all_letters, O, AH, n_points_w, f_points, index_numbers=None):
         self.orig = orig
         self.im = im
@@ -1291,6 +1291,14 @@ class Kim2014(object):
                 mid_points = all_mid_points[:, :]
 
                 self.base_points.append(image_to_focal_plane(mid_points, O))
+
+        # Apply surface tuning parameters als beschikbaar
+        global _surface_tuning_params
+        if _surface_tuning_params:
+            self.set_surface_tuning(
+                y_offset=_surface_tuning_params.get('y_offset', 0.0),
+                curvature_adjust=_surface_tuning_params.get('curvature_adjust', 1.0)
+            )
 
     def initial_args(self):
         # Estimate viewpoint from vanishing point
@@ -1329,8 +1337,9 @@ class Kim2014(object):
 
         T0 = 0.
         if len(self.pages) == 2:
-            rights = [-(line.right() - O[0]) for line in pages[0]]
-            lefts = [-(line.left() - O[0]) for line in pages[1]]
+            # Fix: use self.pages instead of undefined pages variable
+            rights = [-(line.right() - self.O[0]) for line in self.pages[0]]
+            lefts = [-(line.left() - self.O[0]) for line in self.pages[1]]
             T0 = (np.median(rights) + np.median(lefts)) / 2
 
         return np.concatenate([theta_0, a_m_0, align_0, [T0], l_m_0])
@@ -1364,27 +1373,35 @@ class Kim2014(object):
         # Scaling correction voor debug visualisatie
         current_f = globals()['f']
         baseline_f = 3230.0
-        scale_factor = current_f / baseline_f  # Voor f=3500: 3500/3230 ≈ 1.084 (GROTER)
+        scale_factor = current_f / baseline_f
+        
+        # --- SURFACE TUNING: Adjust groene lijnen naar blauwe lijnen ---
+        # Experimentele offset parameters voor betere alignment
+        surface_y_offset = getattr(self, 'surface_y_offset', 0.0)  # Verticale verschuiving
+        surface_curvature_adjust = getattr(self, 'surface_curvature_adjust', 1.0)  # Kromming aanpassing
         
         if lib.debug:
             print(f'[debug_images] f={current_f}, scale_factor={scale_factor:.3f}')
+            print(f'[debug_images] THRESHOLD_MULT={THRESHOLD_MULT:.2f}')
+            print(f'[debug_images] surface_y_offset={surface_y_offset:.2f}, curvature_adjust={surface_curvature_adjust:.3f}')
+            print(f'[debug_images] Lines detected: {len(self.lines)}, Base points: {len(self.base_points)}')
 
         for Y, (_, points_XYZ) in zip(l_m, ts_surface):
-            Xs, Ys, _ = points_XYZ
+            Xs, Ys, Zs = points_XYZ
             X_min, X_max = Xs.min(), Xs.max()
             line_Xs = np.linspace(X_min, X_max, 100)
-            line_Ys = np.full((100,), Y)
-            line_Zs = g(line_Xs)
+            line_Ys = np.full((100,), Y + surface_y_offset)  # Apply Y offset
+            
+            # Apply curvature adjustment to surface
+            line_Zs = g(line_Xs) * surface_curvature_adjust
             line_XYZ = np.stack([line_Xs, line_Ys, line_Zs])
             
             # Projectie met originele f voor correcte berekening
             line_2d = gcs_to_image(line_XYZ, self.O, R).T
             
-            # Scaling correction - schaal groene lijnen terug naar baseline grootte
+            # Scaling correction
             if current_f != baseline_f:
-                # Bereken centrum van de image (niet van de lijn)
                 image_center = np.array([self.im.shape[1] / 2, self.im.shape[0] / 2])
-                # Schaal beide x en y coördinaten rond het image centrum
                 line_2d_scaled = image_center + (line_2d - image_center) * scale_factor
                 line_2d = line_2d_scaled
             
@@ -1426,6 +1443,13 @@ class Kim2014(object):
 
         lib.debug_imwrite('surface_lines.png', debug)
 
+    def set_surface_tuning(self, y_offset=0.0, curvature_adjust=1.0):
+        """Experimentele methode om groene lijnen naar blauwe lijnen te bewegen."""
+        self.surface_y_offset = y_offset
+        self.surface_curvature_adjust = curvature_adjust
+        if lib.debug:
+            print(f'[surface_tuning] Set y_offset={y_offset:.2f}, curvature_adjust={curvature_adjust:.3f}')
+
     def optimize(self):
         global E_str_t0s, E_align_t0s
         E_str_t0s, E_align_t0s = [], []
@@ -1443,44 +1467,17 @@ class Kim2014(object):
 
         loss_0 = DebugLoss(
             Preproject(E_str(self.base_points, n_pages, scale_t=True),
-                        # + Regularize_T(self.base_points, n_pages) * 2.0,  # This just makes sure nothing crazy happens.
                         self.base_points, n_pages) \
-            + make_E_align(self.pages, self.AH, self.O) * 0.6 \
-            # + Regularize_T(self.base_points, n_pages) * 12.0
+            + make_E_align(self.pages, self.AH, self.O) * 0.6
         )
 
-        # result = lm(
         result = opt.least_squares(
             fun=loss_0.residuals,
             x0=args_0,
             jac=loss_0.jac,
-            # method='lm',
             ftol=1e-3,
-            # max_nfev=1,
-            # x_scale='jac',
             x_scale=x_scale,
         )
-
-        # theta_0, a_m_0, align_0, T0, l_m_0, g_0 = unpack_args(result_0.x, n_pages)
-        # print(theta_0, a_m_0[0], align_0, T0, l_m_0, g_0)
-        # args_1 = np.concatenate([theta_0, a_m_0[0], align_0[0], [T0], l_m_0])
-        # loss = DebugLoss(
-        #     Preproject(E_str(self.base_points, n_pages, scale_t=True),
-        #                 # + Regularize_T(self.base_points, n_pages) * 2.0,  # This just makes sure nothing crazy happens.
-        #                 self.base_points, n_pages) \
-        #     # + make_E_align(self.pages, self.AH, self.O) *0.5 \
-        #     + Regularize_T(self.base_points, n_pages) * 5.0
-        # )
-        # result = opt.least_squares(
-        #     fun=loss.residuals,
-        #     x0=args_1,
-        #     jac=loss.jac,
-        #     # method='lm',
-        #     ftol=1e-3,
-        #     # max_nfev=1,
-        #     # x_scale='jac',
-        #     x_scale=x_scale,
-        # )
 
         theta, a_ms, align, T, l_m, g = unpack_args(result.x, n_pages)
         final_norm = norm(result.fun)
@@ -1493,7 +1490,6 @@ class Kim2014(object):
                 print('a_m:', np.concatenate([[0], a_m]))
             if isinstance(g, SplitPoly):
                 print('T:', g.T)
-            # print('l_m:', l_m)
 
         return final_norm, result
 
@@ -1518,23 +1514,39 @@ def go(argv):
     lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
     ctr = None
-    out = kim2014(im, O=ctr, f_points=[])#, n_points_w=3000)
-    # for i, outimg in enumerate(out):
-        # gray = binarize.grayscale(outimg).astype(np.float64)
-        # gray -= np.percentile(gray, 2)
-        # gray *= 255 / np.percentile(gray, 95)
-        # norm = binarize.ng2014_normalize(lib.clip_u8(gray))
+    out = kim2014(im, O=ctr, f_points=[])
     cv2.imwrite('dewarped.jpg', out[0][0])
 
-def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None, flatbed=False, focal_length=None):
+# Global voor surface tuning parameters
+_surface_tuning_params = {}
+
+def go_dewarp(im, ctr, f_points=[], debug=False, split=False, index_numbers=None, flatbed=False, focal_length=None, surface_tuning=None):
+    global THRESHOLD_MULT, _surface_tuning_params
+    
     lib.debug = debug
     lib.debug_prefix = ['dewarp']
     np.set_printoptions(linewidth=130, precision=4)
+    
+    # Store original threshold
+    original_threshold = THRESHOLD_MULT
     
     # Experimentele focal length override
     if focal_length is not None:
         set_focal_length(focal_length)
         if lib.debug: print(f'Experimental mode: f={f}, THRESHOLD_MULT={THRESHOLD_MULT}')
     
-    out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers, flatbed=flatbed)
-    return out
+    # Threshold tuning override
+    if surface_tuning and 'threshold_mult' in surface_tuning:
+        THRESHOLD_MULT = surface_tuning['threshold_mult']
+        if lib.debug: 
+            print(f'Threshold tuning: THRESHOLD_MULT={THRESHOLD_MULT} (was {original_threshold})')
+    
+    # Surface tuning hook voor parameter experimenten
+    _surface_tuning_params = surface_tuning or {}
+    
+    try:
+        out = kim2014(im, split=split, O=ctr, f_points=f_points, index_numbers=index_numbers, flatbed=flatbed)
+        return out
+    finally:
+        # Restore original threshold
+        THRESHOLD_MULT = original_threshold

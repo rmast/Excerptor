@@ -65,7 +65,12 @@ class Line(object):
         return np.linalg.norm(self.closest_point(point) - np.array(point))
 
     def draw(self, im, thickness=2, color=BLUE):
-        _, im_w, _ = im.shape
+        # Handle both grayscale (2D) and color (3D) images
+        if len(im.shape) == 3:
+            _, im_w, _ = im.shape
+        else:
+            _, im_w = im.shape
+
         cv2.line(im, (0, int(self(0))), (im_w, int(self(im_w))), color=color,
                  thickness=thickness)
 
