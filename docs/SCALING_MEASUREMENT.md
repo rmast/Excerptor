@@ -128,3 +128,38 @@ python demo.py -d -i book -vt --scantailor-split -o test_f3500_v2 -f 3500
 - **f=3230-4000**: Optimal range
 - **f=5000-6000**: Usable with monitoring
 - **f=7500+**: Avoid - algorithm breakdown
+
+# Production Scaling Implementation
+
+## ✅ **Complete Scaling Pipeline**:
+1. **Debug scaling**: Surface_lines.png visualization ✓
+2. **Production scaling**: Final mesh for dewarped.tif ✓
+
+## **Expected Result**:
+- **f=3500**: Dewarped.tif met correcte schaling rond mesh centrum
+- **Consistent behavior**: Debug lines ↔ production output
+- **Scale factor**: 3500/3230 ≈ 1.084 toegepast op mesh coördinaten
+
+## **Test**:
+```bash
+python demo.py -d -i book -vt --scantailor-split -o test_f3500_production -f 3500
+```
+
+**Expected**: Finale dewarped.tif toont zelfde scaling als groene lijnen in surface_lines.png
+
+# Production Scaling - Safety Limits
+
+## **Problem Identified**:
+- **f=5000**: scale_factor=1.548 → mesh explosion (coordinates ~3e8)
+- **OpenCV error**: Corrupted image data from extreme mesh
+
+## **Safety Measures Implemented**:
+1. **Scale factor limits**: 0.5 ≤ scale_factor ≤ 2.0
+2. **Mesh bounds check**: max_coord < 1e6
+3. **Graceful fallback**: Disable scaling on explosion
+4. **OpenCV safety**: Handle connectedComponents errors
+
+## **Recommended Usage**:
+- **f=3230-4000**: Full scaling support ✓
+- **f=4000-5000**: Clamped scaling (limited benefit)
+- **f>5000**: Scaling disabled (safety fallback)

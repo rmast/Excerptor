@@ -1067,9 +1067,44 @@ def make_mesh_2d_indiv(all_lines, corners_XYZ, O, R, g, n_points_w=None):
 
     mesh_XYZ_y = np.linspace(box_XYZ.y0, box_XYZ.y1, n_points_h)
     mesh_XYZ = make_mesh_XYZ(mesh_XYZ_x_arc, mesh_XYZ_y, g)
+    
     # Gebruik CameraParams voor consistente projectie
     camera = CameraParams(globals()['f'], O)
     mesh_2d = gcs_to_image(mesh_XYZ, camera, R)
+    
+    # --- PRODUCTION SCALING: Apply to final mesh for dewarped.tif ---
+    current_f = globals()['f']
+    baseline_f = 3230.0
+    if current_f != baseline_f:
+        scale_factor = current_f / baseline_f
+        
+        # SAFETY: Limit extreme scaling to prevent mesh explosion
+        if scale_factor > 2.0 or scale_factor < 0.5:
+            if lib.debug:
+                print(f'[make_mesh_2d] WARNING: Extreme scale_factor {scale_factor:.3f} clamped to safe range')
+            scale_factor = np.clip(scale_factor, 0.5, 2.0)
+        
+        if lib.debug:
+            print(f'[make_mesh_2d] Applying production scaling: f={current_f}, scale_factor={scale_factor:.3f}')
+        
+        # Apply scaling to mesh coordinates for consistent dewarping
+        mesh_center_x = (mesh_2d[0].min() + mesh_2d[0].max()) / 2
+        mesh_center_y = (mesh_2d[1].min() + mesh_2d[1].max()) / 2
+        mesh_center = np.array([mesh_center_x, mesh_center_y])
+        
+        # Scale mesh coordinates around center
+        mesh_2d[0] = mesh_center[0] + (mesh_2d[0] - mesh_center[0]) * scale_factor
+        mesh_2d[1] = mesh_center[1] + (mesh_2d[1] - mesh_center[1]) * scale_factor
+        
+        # SAFETY: Check for reasonable mesh bounds after scaling
+        mesh_bounds = Crop.from_points(mesh_2d)
+        max_coord = max(abs(mesh_bounds.x0), abs(mesh_bounds.y0), abs(mesh_bounds.x1), abs(mesh_bounds.y1))
+        if max_coord > 1e6:  # Extreme coordinates detected
+            if lib.debug:
+                print(f'[make_mesh_2d] ERROR: Mesh explosion detected, max_coord={max_coord:.0f}')
+            # Fallback: disable scaling for this case
+            mesh_2d = gcs_to_image(mesh_XYZ, camera, R)  # Reset to unscaled
+    # ----------------------------------------------------------------
     
     if lib.debug: print('mesh:', Crop.from_points(mesh_2d))
 

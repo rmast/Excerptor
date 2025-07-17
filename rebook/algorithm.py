@@ -65,10 +65,26 @@ def top_contours(contours, hierarchy):
     return result
 
 def all_letters(im):
-    max_label, labels, stats, centroids = \
-        cv2.connectedComponentsWithStats(im ^ 255, connectivity=4)
-    return [Letter(label, labels, stats[label], centroids[label]) \
-            for label in range(1, max_label)]
+    # Safety check for image format
+    if len(im.shape) != 2:
+        if lib.debug:
+            print(f'[all_letters] WARNING: Expected 2D image, got shape {im.shape}')
+        return []
+    
+    if im.dtype != np.uint8:
+        if lib.debug:
+            print(f'[all_letters] WARNING: Converting {im.dtype} to uint8')
+        im = im.astype(np.uint8)
+    
+    try:
+        max_label, labels, stats, centroids = \
+            cv2.connectedComponentsWithStats(im ^ 255, connectivity=4)
+        return [Letter(label, labels, stats[label], centroids[label]) \
+                for label in range(1, max_label)]
+    except cv2.error as e:
+        if lib.debug:
+            print(f'[all_letters] OpenCV error: {e}')
+        return []
 
 def dominant_char_height(im, letters=None):
     if letters is None:
