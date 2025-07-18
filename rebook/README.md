@@ -70,10 +70,156 @@ Die baselines werden mooi gegroepeerd op veel of weinig curvature, daar komen me
 
 Feitelijk laat ik de rest dus voor wat het is en werk ik met de commando's:
 
-
+```bash
 python scantailor_bridge.py 'book/Scan_20250618 (8)_1L.tif'
 python inspect_export.py
 vi scantailor_export/textblocks.json
 grep -E 'block_id|baseline_id|super|deuk_probability' scantailor_export/textblocks.json
+```
 
 Met python3.10
+
+### ScanTailor Deviant Integration
+
+Voor integratie in ScanTailor Deviant C++:
+
+#### 1. Bridge Call in Dewarping Stage
+```cpp
+// In ScanTailor dewarping initialization (DewarpingView.cpp):
+void DewarpingView::initializeFromPython(const QString& imagePath) {
+    QString scriptPath = QDir::currentPath() + "/python_bridge/scantailor_bridge.py";
+    QString command = QString("python3 %1 '%2'").arg(scriptPath, imagePath);
+    
+    QProcess pythonProcess;
+    pythonProcess.execute(command);
+    pythonProcess.waitForFinished();
+    
+    // Load generated JSON files
+    loadDetectedSuperBlocks("scantailor_export/textblocks.json");
+}
+```
+
+#### 2. JSON Import in MultiBlockDistortionModel
+```cpp
+// In MultiBlockDistortionModel.cpp:
+void MultiBlockDistortionModel::loadDetectedSuperBlocks(const QString& jsonPath) {
+    QFile file(jsonPath);
+    if (!file.open(QIODevice::ReadOnly)) return;
+    
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    QJsonObject root = doc.object();
+    
+    // Get geographic super blocks
+    QJsonObject superBlocks = root["geographic_super_blocks"].toObject();
+    QJsonArray blocks = superBlocks["blocks"].toArray();
+    
+    for (const QJsonValue& blockValue : blocks) {
+        QJsonObject block = blockValue.toObject();
+        
+        int superBlockId = block["super_block_id"].toInt();
+        QJsonArray baselineIds = block["baseline_ids"].toArray();
+        
+        // Create distortion model for this super block
+        createDistortionModelFromBaselines(superBlockId, baselineIds, block);
+    }
+}
+```
+
+#### 3. Initialize Splines from Detected Data
+```cpp
+void MultiBlockDistortionModel::createDistortionModelFromBaselines(
+    int superBlockId, 
+    const QJsonArray& baselineIds, 
+    const QJsonObject& blockData) {
+    
+    // Get curvature info
+    QJsonObject curvatureInfo = blockData["curvature_info"].toObject();
+    bool hasDistortion = curvatureInfo["has_distortion"].toBool();
+    QString category = curvatureInfo["category"].toString();
+    
+    // Create initial splines from detected baselines
+    std::vector<QPointF> topSplinePoints;
+    std::vector<QPointF> bottomSplinePoints;
+    
+    // Load spline control points from JSON
+    QJsonObject splineParams = getFirstModelSplineParams(baselineIds);
+    populateSplinePoints(splineParams, topSplinePoints, bottomSplinePoints);
+    
+    // Create distortion model
+    auto distortionModel = std::make_shared<DistortionModel>();
+    distortionModel->setSuperBlockId(superBlockId);
+    distortionModel->setTopSpline(Spline(topSplinePoints));
+    distortionModel->setBottomSpline(Spline(bottomSplinePoints));
+    distortionModel->setNeedsCorrection(hasDistortion);
+    distortionModel->setCurvatureCategory(category);
+    
+    // Add to model list
+    m_distortionModels[superBlockId] = distortionModel;
+    
+    // Initialize UI with super block
+    initializeSuperBlockUI(superBlockId, category, baselineIds.size());
+}
+```
+
+#### 4. User Interface for Super Block Selection
+```cpp
+// In DewarpingOptionsWidget.cpp:
+void DewarpingOptionsWidget::initializeSuperBlockUI(
+    int superBlockId, 
+    const QString& curvatureCategory,
+    int numBaselines) {
+    
+    QString blockLabel = QString("📍 Tekstblok %1").arg(superBlockId);
+    QString statusIcon = curvatureCategory.contains("DISTORTED") ? "⚠️" : "✅";
+    QString description = QString("%1 %2 (%3 baselines)")
+                         .arg(statusIcon, curvatureCategory, QString::number(numBaselines));
+    
+    // Create UI elements
+    QCheckBox* blockCheckbox = new QCheckBox(blockLabel);
+    QLabel* statusLabel = new QLabel(description);
+    QPushButton* adjustButton = new QPushButton("Fine-tune baselines");
+    
+    // Connect signals
+    connect(blockCheckbox, &QCheckBox::toggled, 
+            [this, superBlockId](bool enabled) {
+                toggleSuperBlock(superBlockId, enabled);
+            });
+            
+    connect(adjustButton, &QPushButton::clicked,
+            [this, superBlockId]() {
+                openBaselineEditor(superBlockId);
+            });
+    
+    // Add to layout
+    m_superBlockLayout->addWidget(blockCheckbox);
+    m_superBlockLayout->addWidget(statusLabel);
+    m_superBlockLayout->addWidget(adjustButton);
+}
+```
+
+#### 5. Runtime Usage Flow
+```cpp
+// Typical user workflow:
+// 1. Load image → automatic Python bridge call
+// 2. User sees 4 super blocks with curvature indicators
+// 3. User enables/disables super blocks for correction
+// 4. User fine-tunes individual baselines within selected super blocks
+// 5. Apply dewarp with custom spline adjustments
+```
+
+#### 6. Command Integration
+```cpp
+// Add menu option or toolbar button:
+void MainWindow::onDetectBaselines() {
+    QString imagePath = getCurrentImagePath();
+    m_dewarpingView->initializeFromPython(imagePath);
+    
+    statusBar()->showMessage("Python baseline detection completed");
+}
+```
+
+Deze aanpak geeft users:
+- **4 geographic super blocks** (van je voorbeeld)
+- **Curvature indicators** (DISTORTED/STRAIGHT)  
+- **Individual baseline editing** binnen elk super block
+- **Clean Python→C++ bridge** zonder complexe dependencies
