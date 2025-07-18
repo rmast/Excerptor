@@ -62,3 +62,18 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Robert
+
+Uiteindelijk heb ik maar besloten alleen die mooie baselines te gebruiken die resulteren uit het aanroepen van rebook dewarp zonder het classificatiemodel van Excerptor ervoor, door een aparte scantailor-parameter mee te geven.
+Die baselines werden mooi gegroepeerd op veel of weinig curvature, daar komen met de voorbeeldpagina nu 4 potentiele tekstsuperblokken uit die alszodanig vanuit scantailor deviant te consumeren zullen moeten zijn.
+
+Feitelijk laat ik de rest dus voor wat het is en werk ik met de commando's:
+
+
+python scantailor_bridge.py 'book/Scan_20250618 (8)_1L.tif'
+python inspect_export.py
+vi scantailor_export/textblocks.json
+grep -E 'block_id|baseline_id|super|deuk_probability' scantailor_export/textblocks.json
+
+Met python3.10
