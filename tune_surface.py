@@ -21,23 +21,9 @@ def test_surface_tuning(image_path, f_value=3500):
     
     # Test configuraties - inclusief threshold experiments
     test_configs = [
-        # Baseline
-        {"name": "baseline", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 1.0},
-        
-        # Threshold experiments (meer letters detecteren)
-        {"name": "loose_threshold", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 0.8},
-        {"name": "very_loose", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 0.6},
-        {"name": "tight_threshold", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 1.5},
-        
-        # Surface tuning experiments
-        {"name": "y_offset_up", "y_offset": -10.0, "curvature_adjust": 1.0, "threshold_mult": 1.0},
-        {"name": "y_offset_down", "y_offset": 10.0, "curvature_adjust": 1.0, "threshold_mult": 1.0},
-        {"name": "less_curve", "y_offset": 0.0, "curvature_adjust": 0.8, "threshold_mult": 1.0},
-        {"name": "more_curve", "y_offset": 0.0, "curvature_adjust": 1.2, "threshold_mult": 1.0},
-        
-        # Combined experiments (threshold + surface)
-        {"name": "loose_combined", "y_offset": -5.0, "curvature_adjust": 0.9, "threshold_mult": 0.8},
-        {"name": "aggressive_detect", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 0.5},
+        {"name": "very_loose2", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 0.4}, 
+        {"name": "very_loose3", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 0.3},
+        {"name": "very_loose4", "y_offset": 0.0, "curvature_adjust": 1.0, "threshold_mult": 0.2},
     ]
     
     for config in test_configs:
