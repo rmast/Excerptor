@@ -1,0 +1,6 @@
+opencv-python
+numpy
+scikit-image
+scipy
+rawpy
+# pathlib is stdlib, not needed in requirements
